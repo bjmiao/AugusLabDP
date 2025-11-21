@@ -218,8 +218,6 @@ class DataAnalyzer:
         try:
             # Load the npy file with allow_pickle=True
             face_data = np.load(str(face_path), allow_pickle=True).item()
-            
-            print(face_data.keys())
             # Try to extract motSVD, movSVD, and motion fields
             motSVD = face_data['motSVD'][1]
             movSVD = face_data['movSVD'][1]

@@ -286,7 +286,6 @@ class MainWindow(QMainWindow):
             )
             return
         current_process_folder = self.current_folder.absolute().name
-        print(current_process_folder)
         output_folder = Path(output_folder_text)
         
         # Get extraction parameters

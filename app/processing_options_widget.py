@@ -181,6 +181,12 @@ class ProcessingOptionsWidget(QWidget):
         self.modality_widgets["Pupil Physiology"] = pupil_widget
         self.container_layout.addWidget(pupil_widget)
         
+        # Probe Location (Depth Table)
+        probe_location_widget = ModalityOptionsWidget("Probe Location")
+        probe_location_widget.enable_checkbox.setChecked(True)  # Default checked
+        self.modality_widgets["Probe Location"] = probe_location_widget
+        self.container_layout.addWidget(probe_location_widget)
+        
         # Add stretch at the end
         self.container_layout.addStretch()
     
@@ -226,6 +232,10 @@ class ProcessingOptionsWidget(QWidget):
         # Pupil Physiology
         if "Pupil Physiology" in self.modality_widgets:
             params.extract_pupil = self.modality_widgets["Pupil Physiology"].is_enabled()
+        
+        # Probe Location
+        if "Probe Location" in self.modality_widgets:
+            params.extract_probe_location = self.modality_widgets["Probe Location"].is_enabled()
         
         return params
 

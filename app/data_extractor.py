@@ -55,6 +55,9 @@ class ExtractionParams:
 
     # Pupil Physiology
     extract_pupil: bool = False
+    
+    # Probe Location
+    extract_probe_location: bool = True
 
 
 class DataExtractor:
@@ -102,6 +105,8 @@ class DataExtractor:
                     results[source.name] = self._extract_face(source, output_folder)
                 elif source.data_type == "Pupil Physiology" and self.params.extract_pupil:
                     results[source.name] = self._extract_pupil(source, output_folder)
+                elif source.data_type == "Probe Location" and self.params.extract_probe_location:
+                    results[source.name] = self._extract_probe_location(source, output_folder)
             except Exception as e:
                 results[source.name] = {"error": str(e)}
         
@@ -136,7 +141,6 @@ class DataExtractor:
         num_clusters = get_num_clusters(ks_data)
         total_time = get_total_time(ks_data)
         spike_rate_matrix = get_spike_rate_matrix(ks_data, self.params.spike_rate_bin_size)
-        print(spike_rate_matrix.shape)
         np.save(output_folder / f"spike_rate_matrix_{int(self.params.spike_rate_bin_size * 1000)}ms.npy", spike_rate_matrix)
         return {"status": "success", "message": f"Spike data extracted for {num_spikes} spikes in {total_time} seconds"}
     
@@ -153,8 +157,6 @@ class DataExtractor:
             print(f"Extracting NIDQ data from {source.path} for channels {channels}")
         except ValueError:
             return {"error": f"Invalid channel format: {self.params.nidq_channels}"}
-
-        print(source.bin_file)
         # TODO: hard coded here for the channel to extraction mapping
         meta = readMeta(source.bin_file)
         # Get number of channels and file samples
@@ -210,3 +212,48 @@ class DataExtractor:
         print(f"Extracting pupil data from {source.path}")
         return {"status": "not_implemented", "message": "Pupil extraction not yet implemented"}
 
+    def _extract_probe_location(self, source, output_folder: Path) -> Dict[str, Any]:
+        try:
+            from scipy.io import loadmat
+        except ImportError:
+            return {"status": "error", "message": "scipy is not installed"}
+
+        try:
+            mat_data = loadmat(str(source.path))
+        except Exception as e:
+            return {"status": "error", "message": f"Error loading depth table file: {e}"}
+
+        depth_table = None
+        for key in mat_data.keys():
+            if not key.startswith('__'):  # Skip MATLAB metadata keys
+                depth_table = mat_data[key]
+                break
+        # Convert to numpy array if needed
+        if not isinstance(depth_table, np.ndarray):
+            depth_table = np.array(depth_table)
+        depth_table = depth_table.flatten()
+
+        # Convert the depth table to a dictionary of probe information
+        all_probes_dict = []
+        for probe_id in range(depth_table.shape[0] - 1): # last field is path
+            probe_info_dict = {
+                'start_depth': [],
+                'end_depth': [],
+                'acronym': [],
+                'full_name': [],
+                'region_id': []
+            }
+            for segment_id in range(depth_table[probe_id].shape[0]):
+                start_depth = depth_table[probe_id][segment_id][0].item()
+                end_depth = depth_table[probe_id][segment_id][1].item()
+                acronym = depth_table[probe_id][segment_id][2].item()[0]
+                full_name = depth_table[probe_id][segment_id][3].item()[0]
+                region_id = depth_table[probe_id][segment_id][4].item()
+                probe_info_dict['start_depth'].append(start_depth)
+                probe_info_dict['end_depth'].append(end_depth)
+                probe_info_dict['acronym'].append(acronym)
+                probe_info_dict['full_name'].append(full_name)
+                probe_info_dict['region_id'].append(region_id)
+            all_probes_dict.append(probe_info_dict)
+        np.save(output_folder / f"all_probes_location.npy", all_probes_dict, allow_pickle=True)
+        return {"status": "success", "message": f"Probe location data extracted for {len(all_probes_dict)} probes"}
