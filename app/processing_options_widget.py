@@ -162,7 +162,7 @@ class ProcessingOptionsWidget(QWidget):
         # NIDQ
         nidq_widget = ModalityOptionsWidget("NIDQ")
         nidq_widget.enable_checkbox.setChecked(True)  # Default checked
-        nidq_widget.add_string_field("Channels", "0,1,2")
+        nidq_widget.add_string_field("Channels", "0,1,2,3")
         self.modality_widgets["NIDQ"] = nidq_widget
         self.container_layout.addWidget(nidq_widget)
         
@@ -218,7 +218,7 @@ class ProcessingOptionsWidget(QWidget):
             nidq_widget = self.modality_widgets["NIDQ"]
             params.extract_nidq = nidq_widget.is_enabled()
             nidq_params = nidq_widget.get_params()
-            params.nidq_channels = nidq_params.get("Channels", "0,1,2")
+            params.nidq_channels = nidq_params.get("Channels", "0,1,2,3")
         
         # Face Camera
         if "Face Camera" in self.modality_widgets:

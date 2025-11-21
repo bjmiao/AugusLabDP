@@ -45,7 +45,7 @@ class ExtractionParams:
 
     # NIDQ
     extract_nidq: bool = True
-    nidq_channels: str = "0,1,2"
+    nidq_channels: str = "0,1,2,3"
     
     # Face Camera
     extract_face: bool = True
@@ -159,6 +159,7 @@ class DataExtractor:
             return {"error": f"Invalid channel format: {self.params.nidq_channels}"}
         # TODO: hard coded here for the channel to extraction mapping
         meta = readMeta(source.bin_file)
+        json.dump(meta, open(output_folder / f"nidq_meta.json", "w"))
         # Get number of channels and file samples
         nChan = int(meta['nSavedChans'])
         fileSizeBytes = int(meta['fileSizeBytes'])
@@ -182,6 +183,10 @@ class DataExtractor:
                     digArray = ExtractDigital(rawData, firstSamp, lastSamp, 0, [1], meta)[0]
                     digArray = digArray.flatten()
                     np.save(output_folder / f"nidq_TTL_Camera.npy", digArray)
+                elif channel == 3: # TTL Button Signal  
+                    digArray = ExtractDigital(rawData, firstSamp, lastSamp, 0, [2], meta)[0]
+                    digArray = digArray.flatten()
+                    np.save(output_folder / f"nidq_TTL_Button.npy", digArray)
             except Exception as e:
                 print(e)
                 failed_channels.append(channel)
