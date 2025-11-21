@@ -30,19 +30,26 @@ def readKS4(ks_folder: Path) -> Dict[str, any]:
     
     result = {
         "folder": ks_folder,
+        "params": None,
         "spike_times": None,
         "spike_clusters": None,
         "amplitudes": None,
         "templates": None,
         "cluster_info": None,
-        "params": None,
     }
+        
+    # Read params.py if available
+    params_path = ks_folder / "params.py"
+
+    if params_path.exists():
+        result["params"] = _read_params_py(params_path)
     
     # Read spike_times.npy
     spike_times_path = ks_folder / "spike_times.npy"
     if spike_times_path.exists():
         result["spike_times"] = np.load(spike_times_path)
-    
+        result["spike_times"] = result["spike_times"] / result["params"]["sample_rate"] # to s
+
     # Read spike_clusters.npy
     spike_clusters_path = ks_folder / "spike_clusters.npy"
     if spike_clusters_path.exists():
@@ -67,12 +74,7 @@ def readKS4(ks_folder: Path) -> Dict[str, any]:
         except ImportError:
             # If pandas is not available, skip cluster_info
             pass
-    
-    # Read params.py if available
-    params_path = ks_folder / "params.py"
-    if params_path.exists():
-        result["params"] = _read_params_py(params_path)
-    
+
     return result
 
 
@@ -122,6 +124,22 @@ def get_num_clusters(ks_data: Dict[str, any]) -> int:
         return len(np.unique(ks_data["spike_clusters"]))
     return 0
 
+def get_total_time(ks_data: Dict[str, any]) -> float:
+    """Get total time of recording from Kilosort data"""
+    if ks_data.get("spike_times") is not None:
+        return np.max(ks_data["spike_times"])
+    return 0
+
+def get_spike_rate_matrix(ks_data: Dict[str, any], bin_size: float) -> np.ndarray:
+    """Get spike rate matrix from Kilosort data"""
+    num_clusters = get_num_clusters(ks_data)
+    total_time = get_total_time(ks_data)
+    spike_rate_matrix = np.zeros((num_clusters, int(total_time / bin_size) + 1))
+    if ks_data.get("spike_times") is not None:
+        for cluster_id in range(num_clusters):
+            spikes = get_cluster_spikes(ks_data, cluster_id)
+            spike_rate_matrix[cluster_id, :] = np.histogram(spikes, bins=np.arange(0, total_time + bin_size, bin_size))[0] / bin_size
+    return spike_rate_matrix
 
 def get_cluster_spikes(ks_data: Dict[str, any], cluster_id: int) -> np.ndarray:
     """

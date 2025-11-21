@@ -319,6 +319,25 @@ def makeMemMapRaw(binFullPath, meta):
     return(rawData)
 
 
+
+# Return an array [channels X timepoints] of gain corrected voltages
+# for a specified set of channels.
+def ExtractAnalog(rawData, chanList, firstSamp, lastSamp, meta):
+    selectData = rawData[chanList, firstSamp:lastSamp+1]
+    if meta['typeThis'] == 'imec':
+        # apply gain correction and convert to uV
+        convData = 1e6*GainCorrectIM(selectData, chanList, meta)
+    elif meta['typeThis'] == 'nidq':
+        MN, MA, XA, DW = ChannelCountsNI(meta)
+        # print("NI channel counts: %d, %d, %d, %d" % (MN, MA, XA, DW))
+        # apply gain correction and convert to mV
+        convData = 1e3*GainCorrectNI(selectData, chanList, meta)
+    elif meta['typeThis'] == 'obx':
+        # Gain correct is just conversion to volts           
+        convData = 1e3*GainCorrectOBX(selectData, chanList, meta)
+    return convData
+
+
 # Return an array [lines X timepoints] of uint8 values for a
 # specified set of digital lines.
 #
@@ -326,7 +345,6 @@ def makeMemMapRaw(binFullPath, meta):
 #    16-bit word that contains the digital lines of interest.
 # - dLineList is a zero-based list of one or more lines/bits
 #    to scan from word dwReq.
-#
 def ExtractDigital(rawData, firstSamp, lastSamp, dwReq, dLineList, meta):
     # Get channel index of requested digital word dwReq
     if meta['typeThis'] == 'imec':
@@ -374,6 +392,18 @@ def ExtractDigital(rawData, firstSamp, lastSamp, dwReq, dLineList, meta):
     return(digArray)
 
 
+def ExtractDataWrapper(binFullPath, chanList, firstSamp, lastSamp, dataType):
+    meta = readMeta(binFullPath)
+    rawData = makeMemMapRaw(binFullPath, meta)
+    if dataType == 'A':
+        return ExtractAnalog(rawData, chanList, firstSamp, lastSamp, meta)
+    elif dataType == 'D':
+        return ExtractDigital(rawData, firstSamp, lastSamp, dw, dLineList, meta)
+    else:
+        print('unknown data type')
+        return None
+    return convData
+
 # Sample calling program to get a file from the user,
 # read metadata fetch sample rate, voltage conversion
 # values for this file and channel, and plot a small range
@@ -389,7 +419,7 @@ def main():
     # Other parameters about what data to read
     tStart = 0
     tEnd = 2
-    dataType = 'A'    # 'A' for analog, 'D' for digital data
+    dataType = 'D'    # 'A' for analog, 'D' for digital data
 
     # For analog channels: zero-based index of a channel to extract,
     # gain correct and plot (plots first channel only)
@@ -401,7 +431,8 @@ def main():
 
     # Zero-based Line indices to read from the digital word and plot.
     # For 3B2 imec data: the sync pulse is stored in line 6.
-    dLineList = [0, 1, 6]
+    dLineList = [1]
+    # dLineList = [0, 1, 6]
 
     # Read in metadata; returns a dictionary with string for values
     meta = readMeta(binFullPath)
@@ -417,19 +448,7 @@ def main():
     rawData = makeMemMapRaw(binFullPath, meta)
 
     if dataType == 'A':
-        selectData = rawData[chanList, firstSamp:lastSamp+1]
-        if meta['typeThis'] == 'imec':
-            # apply gain correction and convert to uV
-            convData = 1e6*GainCorrectIM(selectData, chanList, meta)
-        elif meta['typeThis'] == 'nidq':
-            MN, MA, XA, DW = ChannelCountsNI(meta)
-            # print("NI channel counts: %d, %d, %d, %d" % (MN, MA, XA, DW))
-            # apply gain correction and convert to mV
-            convData = 1e3*GainCorrectNI(selectData, chanList, meta)
-        elif meta['typeThis'] == 'obx':
-            # Gain correct is just conversion to volts           
-            convData = 1e3*GainCorrectOBX(selectData, chanList, meta)
-            
+        convData = ExtractAnalog(rawData, chanList, firstSamp, lastSamp, meta)
         # Plot the first of the extracted channels
         fig, ax = plt.subplots()
         ax.plot(tDat, convData[0, :])

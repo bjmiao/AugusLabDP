@@ -155,6 +155,7 @@ class ProcessingOptionsWidget(QWidget):
         # Spike Sorting
         spikes_widget = ModalityOptionsWidget("Spike Sorting")
         spikes_widget.enable_checkbox.setChecked(True)  # Default checked
+        spikes_widget.add_float_field("Spike rate bin size", 0.1, "s")
         self.modality_widgets["Spike Sorting"] = spikes_widget
         self.container_layout.addWidget(spikes_widget)
         
@@ -170,12 +171,13 @@ class ProcessingOptionsWidget(QWidget):
         face_widget.enable_checkbox.setChecked(True)  # Default checked
         face_widget.add_checkbox_field("motSVD", default=True)
         face_widget.add_checkbox_field("movSVD", default=True)
+        face_widget.add_checkbox_field("motion", default=True)
         self.modality_widgets["Face Camera"] = face_widget
         self.container_layout.addWidget(face_widget)
         
         # Pupil Physiology
         pupil_widget = ModalityOptionsWidget("Pupil Physiology")
-        pupil_widget.enable_checkbox.setChecked(True)  # Default checked
+        pupil_widget.enable_checkbox.setChecked(False)  # Default unchecked
         self.modality_widgets["Pupil Physiology"] = pupil_widget
         self.container_layout.addWidget(pupil_widget)
         
@@ -204,7 +206,7 @@ class ProcessingOptionsWidget(QWidget):
         # Spike Sorting
         if "Spike Sorting" in self.modality_widgets:
             params.extract_spikes = self.modality_widgets["Spike Sorting"].is_enabled()
-        
+            params.spike_rate_bin_size = float(self.modality_widgets["Spike Sorting"].get_params().get("Spike rate bin size", 0.01))
         # NIDQ
         if "NIDQ" in self.modality_widgets:
             nidq_widget = self.modality_widgets["NIDQ"]
@@ -219,6 +221,7 @@ class ProcessingOptionsWidget(QWidget):
             face_params = face_widget.get_params()
             params.extract_motSVD = face_params.get("motSVD", True)
             params.extract_movSVD = face_params.get("movSVD", True)
+            params.extract_motion = face_params.get("motion", True)
         
         # Pupil Physiology
         if "Pupil Physiology" in self.modality_widgets:

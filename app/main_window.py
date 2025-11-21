@@ -14,10 +14,12 @@ from PyQt6.QtWidgets import (
     QSplitter,
     QListWidget,
     QProgressBar,
+    QLineEdit,
 )
 from PyQt6.QtCore import Qt
 from pathlib import Path
 from app.data_detector import DataDetector
+from app.data_extractor import DataExtractor
 from app.data_source_widget import DataSourceListWidget
 
 
@@ -27,7 +29,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("AugusLab Data Preprocessing Dashboard")
-        self.setGeometry(100, 100, 1600, 1000)
+        self.setGeometry(100, 100, 1600, 700)
         
         self.folders: list[Path] = []
         self.current_folder: Path = None
@@ -107,9 +109,29 @@ class MainWindow(QMainWindow):
         main_splitter.setSizes([200, 1200])
         main_layout.addWidget(main_splitter)
         
-        # Bottom: Extract button and progress bar
+        # Bottom: Output folder, Extract button and progress bar
         bottom_layout = QVBoxLayout()
         bottom_layout.setContentsMargins(5, 5, 5, 5)
+        
+        # Output folder selection
+        output_folder_layout = QHBoxLayout()
+        output_folder_label = QLabel("Output Folder:")
+        output_folder_label.setMinimumWidth(100)
+        output_folder_layout.addWidget(output_folder_label)
+        
+        self.output_folder_line = QLineEdit()
+        # Set default output folder to repository root / cachedata
+        repo_root = Path(__file__).parent.parent  # Go up from app/main_window.py to project root
+        default_output = repo_root / "cachedata"
+        self.output_folder_line.setText(str(default_output))
+        output_folder_layout.addWidget(self.output_folder_line)
+        
+        self.browse_output_button = QPushButton("Browse...")
+        self.browse_output_button.setMaximumWidth(80)
+        self.browse_output_button.clicked.connect(self.browse_output_folder)
+        output_folder_layout.addWidget(self.browse_output_button)
+        
+        bottom_layout.addLayout(output_folder_layout)
         
         # Extract button
         self.extract_button = QPushButton("Start Extracting Data")
@@ -130,6 +152,19 @@ class MainWindow(QMainWindow):
         
         # Status bar
         self.statusBar().showMessage("Ready - Add folders to begin")
+    
+    def browse_output_folder(self):
+        """Open folder dialog to select output folder"""
+        folder_path = QFileDialog.getExistingDirectory(
+            self,
+            "Select Output Folder",
+            "",
+            QFileDialog.Option.ShowDirsOnly
+        )
+        
+        if folder_path:
+            self.output_folder_line.setText(folder_path)
+            self.statusBar().showMessage(f"Output folder set: {folder_path}")
     
     def add_folders(self):
         """Open folder dialog to add one or more folders"""
@@ -241,9 +276,23 @@ class MainWindow(QMainWindow):
             )
             return
         
+        # Get and validate output folder
+        output_folder_text = self.output_folder_line.text().strip()
+        if not output_folder_text:
+            QMessageBox.warning(
+                self,
+                "No Output Folder",
+                "Please select an output folder for the extracted data."
+            )
+            return
+        current_process_folder = self.current_folder.absolute().name
+        print(current_process_folder)
+        output_folder = Path(output_folder_text)
+        
         # Get extraction parameters
         params = self.processing_options_widget.get_extraction_params()
-        
+        data_extractor = DataExtractor(params)
+
         # Get enabled sources from all folders
         all_sources = []
         for folder in self.folders:
@@ -251,6 +300,8 @@ class MainWindow(QMainWindow):
             sources = detector.scan()
             all_sources.extend([s for s in sources if s.enabled])
         
+        self.progress_bar.setValue(0)
+        self.statusBar().showMessage(f"Extraction started... Output: {output_folder}")
         if not all_sources:
             QMessageBox.warning(
                 self,
@@ -259,16 +310,12 @@ class MainWindow(QMainWindow):
             )
             return
         
-        # TODO: Implement actual extraction
-        # For now, just show a message
-        QMessageBox.information(
-            self,
-            "Extraction Started",
-            f"Extraction will process {len(all_sources)} data source(s) from {len(self.folders)} folder(s).\n\n"
-            "Extraction functionality will be implemented next."
-        )
-        
-        # Reset progress bar
-        self.progress_bar.setValue(0)
-        self.statusBar().showMessage("Extraction started...")
+        results = data_extractor.extract_all(current_process_folder, all_sources, output_folder)
+        # Show the results in a message box, showing "#success / #total" in the log
+        success_count = 0
+        for result in results.values():
+            if result.get("status", "Undefined") == "success":
+                success_count += 1
+        print(results)
 
+        self.statusBar().showMessage(f"{success_count} / {len(results)} sources extracted successfully")

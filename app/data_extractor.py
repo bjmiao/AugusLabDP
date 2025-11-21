@@ -6,7 +6,27 @@ from pathlib import Path
 from typing import Dict, Optional, Any
 from dataclasses import dataclass, field
 import numpy as np
+import json
 
+# Import readutil functions
+try:
+    from scipy.io import loadmat
+    SCIPY_AVAILABLE = True
+except ImportError:
+    SCIPY_AVAILABLE = False
+
+
+try:
+    from app.readutil.readKS import readKS4, get_num_spikes, get_num_clusters
+    READKS_AVAILABLE = True
+except ImportError:
+    READKS_AVAILABLE = False
+
+try:
+    import pandas as pd
+    PANDAS_AVAILABLE = True
+except ImportError:
+    PANDAS_AVAILABLE = False
 
 @dataclass
 class ExtractionParams:
@@ -21,7 +41,8 @@ class ExtractionParams:
     
     # Spike Sorting
     extract_spikes: bool = True
-    
+    spike_rate_bin_size: float = 0.1  # s
+
     # NIDQ
     extract_nidq: bool = True
     nidq_channels: str = "0,1,2"
@@ -30,9 +51,10 @@ class ExtractionParams:
     extract_face: bool = True
     extract_motSVD: bool = True
     extract_movSVD: bool = True
-    
+    extract_motion: bool = True
+
     # Pupil Physiology
-    extract_pupil: bool = True
+    extract_pupil: bool = False
 
 
 class DataExtractor:
@@ -41,11 +63,14 @@ class DataExtractor:
     def __init__(self, params: ExtractionParams):
         self.params = params
     
-    def extract_all(self, sources: list, output_folder: Path) -> Dict[str, Any]:
+    def extract_all(self, current_process_folder: str, sources: list, output_folder: Path) -> Dict[str, Any]:
         """
         Extract all enabled data sources
-        
+
         Args:
+            current_process_folder: Name of the current process folder
+                will be the parent folder of the extracted data
+                and the name of the folder in the output folder
             sources: List of DataSource objects to extract
             output_folder: Path to save extracted data
             
@@ -53,8 +78,13 @@ class DataExtractor:
             Dictionary with extraction results
         """
         results = {}
+        # Store the parameters in the root output folder since it is universal
+        with open(output_folder / 'params.json', 'w') as f:
+            json.dump(self.params.__dict__, f)
+        output_folder = output_folder / current_process_folder
         output_folder.mkdir(parents=True, exist_ok=True)
-        
+        # Store a json file, 'params.json' in the output folder, with the parameters
+
         for source in sources:
             if not source.enabled:
                 continue
@@ -80,11 +110,13 @@ class DataExtractor:
     def _extract_ap(self, source, output_folder: Path) -> Dict[str, Any]:
         """Extract Neuropixels AP data"""
         # TODO: Implement AP extraction
+        print(f"Extracting AP data from {source.path}")
         return {"status": "not_implemented", "message": "AP extraction not yet implemented"}
     
     def _extract_lfp(self, source, output_folder: Path) -> Dict[str, Any]:
         """Extract Neuropixels LFP data"""
         # TODO: Implement LFP extraction with filtering
+        print(f"Extracting LFP data from {source.path}")
         return {
             "status": "not_implemented",
             "message": f"LFP extraction with sampling_freq={self.params.lfp_sampling_freq} Hz, "
@@ -93,39 +125,88 @@ class DataExtractor:
     
     def _extract_spikes(self, source, output_folder: Path) -> Dict[str, Any]:
         """Extract spike sorting data"""
-        # TODO: Implement spike extraction
-        return {"status": "not_implemented", "message": "Spike extraction not yet implemented"}
+        try:
+            from app.readutil.readKS import readKS4, \
+                get_num_spikes, get_num_clusters, get_total_time, get_spike_rate_matrix
+        except ImportError:
+            return {"status": "error", "message": "readKS module not found"}
+        # TODO: At this point we output the time binned spike rate. Later also store templates and the spike trains
+        ks_data = readKS4(source.path)
+        num_spikes = get_num_spikes(ks_data)
+        num_clusters = get_num_clusters(ks_data)
+        total_time = get_total_time(ks_data)
+        spike_rate_matrix = get_spike_rate_matrix(ks_data, self.params.spike_rate_bin_size)
+        print(spike_rate_matrix.shape)
+        np.save(output_folder / f"spike_rate_matrix_{int(self.params.spike_rate_bin_size * 1000)}ms.npy", spike_rate_matrix)
+        return {"status": "success", "message": f"Spike data extracted for {num_spikes} spikes in {total_time} seconds"}
     
-    def _extract_nidq(self, source, output_folder: Path) -> Dict[str, Any]:
+    def _extract_nidq(self, source, output_folder: Path) -> Dict[str, Any]:# Import readutil functions
+        try:
+            from app.readutil.readSGLX import readMeta, SampRate, makeMemMapRaw, ExtractAnalog, ExtractDigital
+        except ImportError:
+            return {"error": "readSGLX module not found"}
+
         """Extract NIDQ data"""
         # Parse channel list
         try:
             channels = [int(ch.strip()) for ch in self.params.nidq_channels.split(',')]
+            print(f"Extracting NIDQ data from {source.path} for channels {channels}")
         except ValueError:
             return {"error": f"Invalid channel format: {self.params.nidq_channels}"}
+
+        print(source.bin_file)
+        # TODO: hard coded here for the channel to extraction mapping
+        meta = readMeta(source.bin_file)
+        # Get number of channels and file samples
+        nChan = int(meta['nSavedChans'])
+        fileSizeBytes = int(meta['fileSizeBytes'])
+        nFileSamp = int(fileSizeBytes / (2 * nChan))  # 2 bytes per int16 sample
         
-        # TODO: Implement NIDQ extraction
-        return {
-            "status": "not_implemented",
-            "message": f"NIDQ extraction for channels {channels} not yet implemented"
-        }
+        rawData = makeMemMapRaw(source.bin_file, meta)
+        firstSamp, lastSamp = 0, nFileSamp - 1 # both end inclusive
+        status = "success"
+        failed_channels = []
+        for channel in channels:
+            try:
+                if channel == 0: # ECG signal
+                    convArray = ExtractAnalog(rawData, [channel], firstSamp, lastSamp, meta)
+                    convArray = convArray.flatten()
+                    np.save(output_folder / f"nidq_ECG.npy", convArray)
+                elif channel == 1: # EEG signal
+                    convArray = ExtractAnalog(rawData, [channel], firstSamp, lastSamp, meta)
+                    convArray = convArray.flatten()
+                    np.save(output_folder / f"nidq_EEG.npy", convArray)
+                elif channel == 2: # TTL Camera signal
+                    digArray = ExtractDigital(rawData, firstSamp, lastSamp, 0, [1], meta)[0]
+                    digArray = digArray.flatten()
+                    np.save(output_folder / f"nidq_TTL_Camera.npy", digArray)
+            except Exception as e:
+                print(e)
+                failed_channels.append(channel)
+                status = "error"
+        if status == "error":
+            return {"status": "error", "message": f"Failed to extract NIDQ data for channels {failed_channels}"}
+        else:
+            return {"status": "success", "message": f"NIDQ data extracted for channels {channels}"}
     
     def _extract_face(self, source, output_folder: Path) -> Dict[str, Any]:
         """Extract face camera data"""
-        # TODO: Implement face extraction
-        extract_fields = []
+        print(source.path)
+        face_data = np.load(str(source.path), allow_pickle=True).item()
         if self.params.extract_motSVD:
-            extract_fields.append("motSVD")
+            motSVD = face_data['motSVD'][1]
+            np.save(output_folder / f"face_motSVD.npy", motSVD)
         if self.params.extract_movSVD:
-            extract_fields.append("movSVD")
-        
-        return {
-            "status": "not_implemented",
-            "message": f"Face extraction for fields {extract_fields} not yet implemented"
-        }
+            movSVD = face_data['movSVD'][1]
+            np.save(output_folder / f"face_movSVD.npy", movSVD)
+        if self.params.extract_motion:
+            motion = face_data['motion'][1]
+            np.save(output_folder / f"face_motion.npy", motion)
+        return {"status": "success", "message": f"Face data extracted for fields facemap"}
     
     def _extract_pupil(self, source, output_folder: Path) -> Dict[str, Any]:
         """Extract pupil physiology data"""
         # TODO: Implement pupil extraction
+        print(f"Extracting pupil data from {source.path}")
         return {"status": "not_implemented", "message": "Pupil extraction not yet implemented"}
 

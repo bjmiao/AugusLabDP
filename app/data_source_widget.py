@@ -182,4 +182,3 @@ class DataSourceListWidget(QWidget):
     def get_enabled_sources(self) -> list[DataSource]:
         """Get all data sources (all are enabled by default)"""
         return [item.source for item in self.source_items]
-
