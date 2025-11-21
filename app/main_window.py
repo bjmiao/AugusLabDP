@@ -12,6 +12,8 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QMessageBox,
     QSplitter,
+    QListWidget,
+    QProgressBar,
 )
 from PyQt6.QtCore import Qt
 from pathlib import Path
@@ -25,8 +27,9 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("AugusLab Data Preprocessing Dashboard")
-        self.setGeometry(100, 100, 1400, 900)
+        self.setGeometry(100, 100, 1600, 1000)
         
+        self.folders: list[Path] = []
         self.current_folder: Path = None
         self.detector: DataDetector = None
         
@@ -36,96 +39,236 @@ class MainWindow(QMainWindow):
         
         # Main layout
         main_layout = QVBoxLayout()
-        main_layout.setContentsMargins(10, 10, 10, 10)
+        main_layout.setContentsMargins(10, 5, 10, 10)
         central_widget.setLayout(main_layout)
         
-        # Header section
-        header_layout = QVBoxLayout()
+        # Header section (shorter)
+        header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(5, 5, 5, 5)
         
         # Title
         title_label = QLabel("AugusLab Data Preprocessing Dashboard")
-        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title_label.setStyleSheet("font-size: 24px; font-weight: bold; margin: 10px;")
+        title_label.setStyleSheet("font-size: 18px; font-weight: bold;")
         header_layout.addWidget(title_label)
-        
-        # Folder selection section
-        folder_layout = QHBoxLayout()
-        folder_layout.setSpacing(10)
-        
-        # Load folder button
-        self.load_button = QPushButton("Select Data Folder")
-        self.load_button.setMinimumHeight(40)
-        self.load_button.setMinimumWidth(150)
-        self.load_button.clicked.connect(self.load_data_folder)
-        folder_layout.addWidget(self.load_button)
-        
-        # Current folder label
-        self.folder_label = QLabel("No folder selected")
-        self.folder_label.setStyleSheet("color: gray; padding: 5px;")
-        folder_layout.addWidget(self.folder_label)
-        
-        folder_layout.addStretch()
-        header_layout.addLayout(folder_layout)
+        header_layout.addStretch()
         
         main_layout.addLayout(header_layout)
         
-        # Splitter for main content
-        splitter = QSplitter(Qt.Orientation.Horizontal)
+        # Main content area with splitter
+        main_splitter = QSplitter(Qt.Orientation.Horizontal)
         
-        # Left side: Data source list
+        # Left side: Folder list
+        folder_panel = QWidget()
+        folder_panel_layout = QVBoxLayout()
+        folder_panel_layout.setContentsMargins(5, 5, 5, 5)
+        
+        folder_list_label = QLabel("Dataset Folders")
+        folder_list_label.setStyleSheet("font-weight: bold;")
+        folder_panel_layout.addWidget(folder_list_label)
+        
+        # Folder list box
+        self.folder_list = QListWidget()
+        self.folder_list.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
+        self.folder_list.itemSelectionChanged.connect(self._on_folder_selected)
+        folder_panel_layout.addWidget(self.folder_list)
+        
+        # Folder management buttons
+        folder_buttons_layout = QHBoxLayout()
+        self.add_folders_button = QPushButton("Add Folder(s)")
+        self.add_folders_button.clicked.connect(self.add_folders)
+        folder_buttons_layout.addWidget(self.add_folders_button)
+        
+        self.remove_folders_button = QPushButton("Remove Folder(s)")
+        self.remove_folders_button.clicked.connect(self.remove_folders)
+        folder_buttons_layout.addWidget(self.remove_folders_button)
+        
+        folder_panel_layout.addLayout(folder_buttons_layout)
+        folder_panel.setLayout(folder_panel_layout)
+        folder_panel.setMaximumWidth(250)
+        main_splitter.addWidget(folder_panel)
+        
+        # Middle and right: Data sources and processing options
+        content_splitter = QSplitter(Qt.Orientation.Horizontal)
+        
+        # Middle: Data source list
         self.data_source_widget = DataSourceListWidget()
-        splitter.addWidget(self.data_source_widget)
+        content_splitter.addWidget(self.data_source_widget)
         
         # Right side: Processing options
         from app.processing_options_widget import ProcessingOptionsWidget
         self.processing_options_widget = ProcessingOptionsWidget()
-        splitter.addWidget(self.processing_options_widget)
+        content_splitter.addWidget(self.processing_options_widget)
         
-        # Set splitter proportions (60% left, 40% right)
-        splitter.setSizes([600, 400])
+        # Set content splitter proportions (60% left, 40% right)
+        content_splitter.setSizes([600, 400])
+        main_splitter.addWidget(content_splitter)
         
-        main_layout.addWidget(splitter)
+        # Set main splitter proportions (15% left, 85% right)
+        main_splitter.setSizes([200, 1200])
+        main_layout.addWidget(main_splitter)
+        
+        # Bottom: Extract button and progress bar
+        bottom_layout = QVBoxLayout()
+        bottom_layout.setContentsMargins(5, 5, 5, 5)
+        
+        # Extract button
+        self.extract_button = QPushButton("Start Extracting Data")
+        self.extract_button.setMinimumHeight(35)
+        self.extract_button.setStyleSheet("font-weight: bold; font-size: 12px;")
+        self.extract_button.clicked.connect(self.start_extraction)
+        bottom_layout.addWidget(self.extract_button)
+        
+        # Progress bar
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setMinimum(0)
+        self.progress_bar.setMaximum(100)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setTextVisible(True)
+        bottom_layout.addWidget(self.progress_bar)
+        
+        main_layout.addLayout(bottom_layout)
         
         # Status bar
-        self.statusBar().showMessage("Ready - Select a data folder to begin")
+        self.statusBar().showMessage("Ready - Add folders to begin")
     
-    def load_data_folder(self):
-        """Open folder dialog to select data folder"""
+    def add_folders(self):
+        """Open folder dialog to add one or more folders"""
+        # Note: QFileDialog.getExistingDirectory only supports single selection
+        # Users can call this multiple times to add multiple folders
         folder_path = QFileDialog.getExistingDirectory(
             self,
-            "Select Data Folder",
+            "Select Data Folder (You can add multiple folders by clicking 'Add Folder(s)' again)",
             "",
             QFileDialog.Option.ShowDirsOnly
         )
         
         if folder_path:
-            self.current_folder = Path(folder_path)
-            self.folder_label.setText(f"Folder: {self.current_folder.name}")
-            self.folder_label.setToolTip(str(self.current_folder))
-            self.folder_label.setStyleSheet("color: black; padding: 5px;")
+            folder_path = Path(folder_path)
             
-            # Scan for data sources
-            self.statusBar().showMessage("Scanning folder for data sources...")
-            self.detector = DataDetector(str(self.current_folder))
-            sources = self.detector.scan()
-            
-            if sources:
-                self.data_source_widget.set_sources(sources)
-                self.statusBar().showMessage(
-                    f"Found {len(sources)} data source(s) - Select which ones to process"
-                )
+            # Check if folder is already in the list
+            if folder_path not in self.folders:
+                self.folders.append(folder_path)
+                self.folder_list.addItem(str(folder_path))
+                self.statusBar().showMessage(f"Added folder: {folder_path.name}")
+                
+                # Auto-select the newly added folder
+                items = self.folder_list.findItems(str(folder_path), Qt.MatchFlag.MatchExactly)
+                if items:
+                    self.folder_list.setCurrentItem(items[0])
             else:
-                self.data_source_widget.set_sources([])
-                QMessageBox.warning(
+                QMessageBox.information(
                     self,
-                    "No Data Sources Found",
-                    "No recognized data sources were found in the selected folder.\n\n"
-                    "Please ensure the folder contains:\n"
-                    "- imec folders with .ap.bin/.lfp.bin files\n"
-                    "- .nidq.bin files\n"
-                    "- face_*.npy files\n"
-                    "- pupil_*.csv files\n"
-                    "- depth_table.mat"
+                    "Folder Already Added",
+                    f"Folder '{folder_path.name}' is already in the list."
                 )
-                self.statusBar().showMessage("No data sources found")
+    
+    def remove_folders(self):
+        """Remove selected folders from the list"""
+        selected_items = self.folder_list.selectedItems()
+        
+        if not selected_items:
+            QMessageBox.information(
+                self,
+                "No Selection",
+                "Please select folder(s) to remove."
+            )
+            return
+        
+        # Remove from list (in reverse order to maintain indices)
+        for item in reversed(selected_items):
+            folder_path = Path(item.text())
+            if folder_path in self.folders:
+                self.folders.remove(folder_path)
+            row = self.folder_list.row(item)
+            self.folder_list.takeItem(row)
+        
+        # If current folder was removed, clear data sources
+        if self.current_folder and self.current_folder not in self.folders:
+            self.current_folder = None
+            self.data_source_widget.set_sources([])
+            self.statusBar().showMessage("Folder removed - Select another folder to view data")
+        
+        self.statusBar().showMessage(f"Removed {len(selected_items)} folder(s)")
+    
+    def _on_folder_selected(self):
+        """Handle folder selection from list"""
+        selected_items = self.folder_list.selectedItems()
+        
+        if not selected_items:
+            return
+        
+        # Use the first selected item
+        selected_item = selected_items[0]
+        folder_path = Path(selected_item.text())
+        
+        if folder_path == self.current_folder:
+            return  # Already loaded
+        
+        self.current_folder = folder_path
+        
+        # Scan for data sources
+        self.statusBar().showMessage(f"Scanning folder: {folder_path.name}...")
+        self.detector = DataDetector(str(self.current_folder))
+        sources = self.detector.scan()
+        
+        if sources:
+            self.data_source_widget.set_sources(sources)
+            self.statusBar().showMessage(
+                f"Found {len(sources)} data source(s) in {folder_path.name}"
+            )
+        else:
+            self.data_source_widget.set_sources([])
+            QMessageBox.warning(
+                self,
+                "No Data Sources Found",
+                f"No recognized data sources were found in '{folder_path.name}'.\n\n"
+                "Please ensure the folder contains:\n"
+                "- imec folders with .ap.bin/.lfp.bin files\n"
+                "- .nidq.bin files\n"
+                "- face_*.npy files\n"
+                "- pupil_*.csv files\n"
+                "- depth_table.mat"
+            )
+            self.statusBar().showMessage(f"No data sources found in {folder_path.name}")
+    
+    def start_extraction(self):
+        """Start data extraction process"""
+        if not self.folders:
+            QMessageBox.warning(
+                self,
+                "No Folders",
+                "Please add at least one folder before starting extraction."
+            )
+            return
+        
+        # Get extraction parameters
+        params = self.processing_options_widget.get_extraction_params()
+        
+        # Get enabled sources from all folders
+        all_sources = []
+        for folder in self.folders:
+            detector = DataDetector(str(folder))
+            sources = detector.scan()
+            all_sources.extend([s for s in sources if s.enabled])
+        
+        if not all_sources:
+            QMessageBox.warning(
+                self,
+                "No Sources Selected",
+                "Please enable at least one data source in the selected folders."
+            )
+            return
+        
+        # TODO: Implement actual extraction
+        # For now, just show a message
+        QMessageBox.information(
+            self,
+            "Extraction Started",
+            f"Extraction will process {len(all_sources)} data source(s) from {len(self.folders)} folder(s).\n\n"
+            "Extraction functionality will be implemented next."
+        )
+        
+        # Reset progress bar
+        self.progress_bar.setValue(0)
+        self.statusBar().showMessage("Extraction started...")
 

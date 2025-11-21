@@ -281,7 +281,7 @@ class DataAnalyzer:
         
         try:
             # Load the CSV file using pandas
-            df = pd.read_csv(pupil_path)
+            df = pd.read_csv(pupil_path, index_col = 0, header = [0, 1, 2])
             
             # Count number of rows (frames)
             num_frames = len(df)

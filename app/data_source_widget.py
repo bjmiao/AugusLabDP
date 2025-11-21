@@ -6,18 +6,16 @@ from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
     QHBoxLayout,
-    QCheckBox,
     QLabel,
     QScrollArea,
     QFrame,
 )
-from PyQt6.QtCore import Qt
 from app.data_detector import DataSource
 from app.data_analyzer import DataAnalyzer
 
 
 class DataSourceItem(QWidget):
-    """Widget for a single data source item with checkbox"""
+    """Widget for a single data source item"""
     
     def __init__(self, source: DataSource, parent=None):
         super().__init__(parent)
@@ -26,12 +24,6 @@ class DataSourceItem(QWidget):
         # Main horizontal layout
         main_layout = QHBoxLayout()
         main_layout.setContentsMargins(10, 5, 10, 5)
-        
-        # Checkbox
-        self.checkbox = QCheckBox()
-        self.checkbox.setChecked(source.enabled)
-        self.checkbox.stateChanged.connect(self._on_checkbox_changed)
-        main_layout.addWidget(self.checkbox)
         
         # Vertical layout for name, type, and overview
         info_layout = QVBoxLayout()
@@ -136,15 +128,6 @@ class DataSourceItem(QWidget):
         else:
             self.overview_label.setText("")
     
-    def _on_checkbox_changed(self, state):
-        """Update source enabled state when checkbox changes"""
-        self.source.enabled = (state == Qt.CheckState.Checked.value)
-    
-    def is_checked(self) -> bool:
-        """Check if this item is selected"""
-        return self.checkbox.isChecked()
-
-
 class DataSourceListWidget(QWidget):
     """Widget for displaying a list of data sources"""
     
@@ -197,6 +180,6 @@ class DataSourceListWidget(QWidget):
             )
     
     def get_enabled_sources(self) -> list[DataSource]:
-        """Get all enabled data sources"""
-        return [item.source for item in self.source_items if item.is_checked()]
+        """Get all data sources (all are enabled by default)"""
+        return [item.source for item in self.source_items]
 
