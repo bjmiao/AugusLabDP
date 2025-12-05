@@ -136,26 +136,34 @@ class DataDetector:
                         break  # Only add once per NIDQ dataset
     
     def _scan_face_data(self):
-        """Scan for face behavioral data (.npy files starting with 'face_')"""
-        for item in self.folder_path.iterdir():
-            if item.is_file() and item.name.startswith('face_') and item.suffix == '.npy':
-                self.sources.append(DataSource(
-                    name=f"Face Behavioral Data ({item.name})",
-                    data_type="Face Camera",
-                    path=item,
-                    description="Facial camera behavioral metrics"
-                ))
+        """Scan for face behavioral data (.npy files starting with 'face_' case-insensitive, including subfolders)"""
+        # Search recursively in the folder and subfolders
+        for item in self.folder_path.rglob('*.npy'):
+            if item.is_file():
+                # Case-insensitive check for files starting with 'face_'
+                name_lower = item.name.lower()
+                if name_lower.startswith('face_'):
+                    self.sources.append(DataSource(
+                        name=f"Face Behavioral Data ({item.name})",
+                        data_type="Face Camera",
+                        path=item,
+                        description="Facial camera behavioral metrics"
+                    ))
     
     def _scan_pupil_data(self):
-        """Scan for pupil data (.csv files starting with 'pupil_')"""
-        for item in self.folder_path.iterdir():
-            if item.is_file() and item.name.startswith('pupil_') and item.suffix == '.csv':
-                self.sources.append(DataSource(
-                    name=f"Pupil Data ({item.name})",
-                    data_type="Pupil Physiology",
-                    path=item,
-                    description="Pupil size measurements over time"
-                ))
+        """Scan for pupil data (.csv files starting with 'pupil_' case-insensitive, including subfolders)"""
+        # Search recursively in the folder and subfolders
+        for item in self.folder_path.rglob('*.csv'):
+            if item.is_file():
+                # Case-insensitive check for files starting with 'pupil_'
+                name_lower = item.name.lower()
+                if name_lower.startswith('pupil_'):
+                    self.sources.append(DataSource(
+                        name=f"Pupil Data ({item.name})",
+                        data_type="Pupil Physiology",
+                        path=item,
+                        description="Pupil size measurements over time"
+                    ))
     
     def _scan_depth_table(self):
         """Scan for depth table file"""
