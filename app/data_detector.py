@@ -136,13 +136,13 @@ class DataDetector:
                         break  # Only add once per NIDQ dataset
     
     def _scan_face_data(self):
-        """Scan for face behavioral data (.npy files starting with 'face_' case-insensitive, including subfolders)"""
+        """Scan for face behavioral data (.npy files include 'face_' case-insensitive, including subfolders)"""
         # Search recursively in the folder and subfolders
         for item in self.folder_path.rglob('*.npy'):
             if item.is_file():
                 # Case-insensitive check for files starting with 'face_'
                 name_lower = item.name.lower()
-                if name_lower.startswith('face_'):
+                if 'face' in name_lower:
                     self.sources.append(DataSource(
                         name=f"Face Behavioral Data ({item.name})",
                         data_type="Face Camera",
@@ -151,13 +151,13 @@ class DataDetector:
                     ))
     
     def _scan_pupil_data(self):
-        """Scan for pupil data (.csv files starting with 'pupil_' case-insensitive, including subfolders)"""
+        """Scan for pupil data (.csv files include 'pupil_' case-insensitive, including subfolders)"""
         # Search recursively in the folder and subfolders
         for item in self.folder_path.rglob('*.csv'):
             if item.is_file():
                 # Case-insensitive check for files starting with 'pupil_'
                 name_lower = item.name.lower()
-                if name_lower.startswith('pupil_'):
+                if 'pupil' in name_lower:
                     self.sources.append(DataSource(
                         name=f"Pupil Data ({item.name})",
                         data_type="Pupil Physiology",
