@@ -108,6 +108,7 @@ class DataExtractor:
                 elif source.data_type == "Probe Location" and self.params.extract_probe_location:
                     results[source.name] = self._extract_probe_location(source, output_folder)
             except Exception as e:
+                raise e
                 results[source.name] = {"error": str(e)}
         
         return results
@@ -251,8 +252,8 @@ class DataExtractor:
         depth_table = depth_table.flatten()
 
         # Convert the depth table to a dictionary of probe information
-        all_probes_dict = []
-        for probe_id in range(depth_table.shape[0] - 1): # last field is path
+        num_probes = depth_table.shape[0] - 1 # last field is path
+        for probe_id in range(num_probes): 
             probe_info_dict = {
                 'start_depth': [],
                 'end_depth': [],
@@ -263,14 +264,14 @@ class DataExtractor:
             for segment_id in range(depth_table[probe_id].shape[0]):
                 start_depth = depth_table[probe_id][segment_id][0].item()
                 end_depth = depth_table[probe_id][segment_id][1].item()
-                acronym = depth_table[probe_id][segment_id][2].item()[0]
-                full_name = depth_table[probe_id][segment_id][3].item()[0]
+                acronym = depth_table[probe_id][segment_id][2].item().item()
+                full_name = depth_table[probe_id][segment_id][3].item().item()
                 region_id = depth_table[probe_id][segment_id][4].item()
                 probe_info_dict['start_depth'].append(start_depth)
                 probe_info_dict['end_depth'].append(end_depth)
                 probe_info_dict['acronym'].append(acronym)
                 probe_info_dict['full_name'].append(full_name)
                 probe_info_dict['region_id'].append(region_id)
-            all_probes_dict.append(probe_info_dict)
-        np.save(output_folder / f"all_probes_location.npy", all_probes_dict, allow_pickle=True)
-        return {"status": "success", "message": f"Probe location data extracted for {len(all_probes_dict)} probes"}
+            df_probe = pd.DataFrame.from_records(probe_info_dict)
+            df_probe.to_csv(output_folder / f'probe_{probe_id + 1}_location.csv') # +1 to Matlab 1-base
+        return {"status": "success", "message": f"Probe location data extracted for {num_probes} probes"}
