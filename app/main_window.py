@@ -64,7 +64,7 @@ class MainWindow(QMainWindow):
         folder_panel_layout = QVBoxLayout()
         folder_panel_layout.setContentsMargins(5, 5, 5, 5)
         
-        folder_list_label = QLabel("Dataset Folders")
+        folder_list_label = QLabel("Dataset Folders (Click to preview)")
         folder_list_label.setStyleSheet("font-weight: bold;")
         folder_panel_layout.addWidget(folder_list_label)
         
@@ -185,11 +185,7 @@ class MainWindow(QMainWindow):
                 self.folders.append(folder_path)
                 self.folder_list.addItem(str(folder_path))
                 self.statusBar().showMessage(f"Added folder: {folder_path.name}")
-                
-                # Auto-select the newly added folder
-                items = self.folder_list.findItems(str(folder_path), Qt.MatchFlag.MatchExactly)
-                if items:
-                    self.folder_list.setCurrentItem(items[0])
+
             else:
                 QMessageBox.information(
                     self,
@@ -285,36 +281,39 @@ class MainWindow(QMainWindow):
                 "Please select an output folder for the extracted data."
             )
             return
-        current_process_folder = self.current_folder.absolute().name
-        output_folder = Path(output_folder_text)
         
+
+        output_folder = Path(output_folder_text)
+        results_all = {}
         # Get extraction parameters
         params = self.processing_options_widget.get_extraction_params()
         data_extractor = DataExtractor(params)
+        # Get for each folder, detect and extract the data source
+        self.progress_bar.setValue(0)
+        for index, folder in enumerate(self.folders):
+            current_process_folder = folder.absolute().name
 
-        # Get enabled sources from all folders
-        all_sources = []
-        for folder in self.folders:
+            all_sources = []
             detector = DataDetector(str(folder))
             sources = detector.scan()
-            all_sources.extend([s for s in sources if s.enabled])
-        
-        self.progress_bar.setValue(0)
-        self.statusBar().showMessage(f"Extraction started... Output: {output_folder}")
-        if not all_sources:
-            QMessageBox.warning(
-                self,
-                "No Sources Selected",
-                "Please enable at least one data source in the selected folders."
-            )
-            return
-        
-        results = data_extractor.extract_all(current_process_folder, all_sources, output_folder)
+            all_sources.extend([s for s in sources if s.enabled])    
+            if not all_sources:
+                QMessageBox.warning(
+                    self,
+                    "No Sources Selected",
+                    "Please enable at least one data source in the selected folders."
+                )
+                return
+            results = data_extractor.extract_all(current_process_folder, all_sources, output_folder)
+            results_all = results_all| results # Python 3.9
+            self.progress_bar.setValue(int(100 * (index + 1) / len(self.folders)))
+            self.statusBar().showMessage(f"Extraction finished for {current_process_folder}...")
+
         # Show the results in a message box, showing "#success / #total" in the log
         success_count = 0
-        for result in results.values():
+        for result in results_all.values():
             if result.get("status", "Undefined") == "success":
                 success_count += 1
-        print(results)
+        print(results_all)
 
-        self.statusBar().showMessage(f"{success_count} / {len(results)} sources extracted successfully")
+        self.statusBar().showMessage(f"{success_count} / {len(results_all)} sources extracted successfully")

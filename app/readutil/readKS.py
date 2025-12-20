@@ -14,6 +14,94 @@ import numpy as np
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
+def cluster_average(ids, values):
+    """
+    Replicates MATLAB's clusterAverage:
+    For each unique id, compute mean of values belonging to that id.
+    Returns an array of size (max_id+1,) with NaN for missing ids.
+    """
+    ids = np.asarray(ids).astype(int)
+    values = np.asarray(values)
+
+    max_id = ids.max()
+    out = np.full(max_id + 1, np.nan, dtype=float)
+
+    for uid in np.unique(ids):
+        out[uid] = values[ids == uid].mean()
+
+    return out
+
+
+def template_positions_amplitudes(temps, winv, ycoords,
+                                  spikeTemplates, tempScalingAmps):
+    """
+    Python equivalent of the MATLAB function templatePositionsAmplitudes.
+    """
+
+    # temps: (nTemplates, nTime, nChannels)
+    # winv: (nChannels, nChannels)
+    # ycoords: (nChannels,)
+    # spikeTemplates: (nSpikes,)
+    # tempScalingAmps: (nSpikes,)
+
+    temps = np.asarray(temps)
+    winv = np.asarray(winv)
+    ycoords = np.asarray(ycoords).reshape(-1)
+    spikeTemplates = np.asarray(spikeTemplates).astype(int)
+    tempScalingAmps = np.asarray(tempScalingAmps)
+
+    nTemplates, nTime, nCh = temps.shape
+
+    # Unwhiten templates
+    tempsUnW = np.zeros_like(temps)
+    for t in range(nTemplates):
+        tempsUnW[t] = temps[t] @ winv
+
+    # Channel amplitudes per template
+    tempChanAmps = tempsUnW.max(axis=1) - tempsUnW.min(axis=1)   # (nTemplates, nCh)
+
+    # Template amplitude (unscaled)
+    tempAmpsUnscaled = tempChanAmps.max(axis=1)
+
+    # Threshold & zero out low channels
+    threshVals = tempAmpsUnscaled * 0.3
+    tempChanAmps = np.where(tempChanAmps < threshVals[:, None], 0, tempChanAmps)
+
+    # Template depths = center of mass across channels
+    templateDepths = (tempChanAmps * ycoords[None, :]).sum(axis=1) / tempChanAmps.sum(axis=1)
+
+    # Spike amplitudes (note MATLAB +1 indexing)
+    spikeAmps = tempAmpsUnscaled[spikeTemplates] * tempScalingAmps
+
+    # Compute mean amp per template (true template amplitudes)
+    ta = cluster_average(spikeTemplates, spikeAmps)
+    tempAmps = ta.copy()   # already indexed by template id
+
+    # Spike depths
+    spikeDepths = templateDepths[spikeTemplates]
+
+    # Waveforms: find max-amplitude channel for each template
+    max_site = np.argmax(np.max(np.abs(temps), axis=1), axis=1)  # (nTemplates,)
+    waveforms = np.zeros((nTemplates, nTime))
+    for i in range(nTemplates):
+        waveforms[i] = temps[i, :, max_site[i]]
+
+    # Trough-to-peak duration
+    trough_idx = np.argmin(waveforms, axis=1)
+    templateDuration = np.zeros(nTemplates, dtype=int)
+    for i in range(nTemplates):
+        seg = waveforms[i, trough_idx[i]:]
+        peak_rel = np.argmax(seg)
+        templateDuration[i] = peak_rel
+
+    return (spikeAmps,
+            spikeDepths,
+            templateDepths,
+            tempAmps,
+            tempsUnW,
+            templateDuration,
+            waveforms)
+
 
 def readKS4(ks_folder: Path) -> Dict[str, any]:
     """
@@ -30,51 +118,52 @@ def readKS4(ks_folder: Path) -> Dict[str, any]:
     
     result = {
         "folder": ks_folder,
-        "params": None,
-        "spike_times": None,
-        "spike_clusters": None,
-        "amplitudes": None,
-        "templates": None,
-        "cluster_info": None,
     }
         
-    # Read params.py if available
-    params_path = ks_folder / "params.py"
-
-    if params_path.exists():
-        result["params"] = _read_params_py(params_path)
+    result["params"] = _read_params_py(ks_folder / "params.py")
     
     # Read spike_times.npy
     spike_times_path = ks_folder / "spike_times.npy"
-    if spike_times_path.exists():
-        result["spike_times"] = np.load(spike_times_path)
-        result["spike_times"] = result["spike_times"] / result["params"]["sample_rate"] # to s
+    result["spike_times"] = np.load(spike_times_path)
+    result["spike_times"] = result["spike_times"] / result["params"]["sample_rate"] # to s
 
-    # Read spike_clusters.npy
-    spike_clusters_path = ks_folder / "spike_clusters.npy"
-    if spike_clusters_path.exists():
-        result["spike_clusters"] = np.load(spike_clusters_path)
+    result["spike_clusters"] = np.load(ks_folder / "spike_clusters.npy")
+    result["amplitudes"] = np.load(ks_folder / "amplitudes.npy")
+    result["templates"] = np.load(ks_folder / "templates.npy")
     
-    # Read amplitudes.npy
-    amplitudes_path = ks_folder / "amplitudes.npy"
-    if amplitudes_path.exists():
-        result["amplitudes"] = np.load(amplitudes_path)
+    winv = np.load(ks_folder / 'whitening_mat_inv.npy')
+    coords = np.load(ks_folder / 'channel_positions.npy')
+    xcoords, ycoords = coords[:, 0], coords[:, 1]
+    spikeTemplates = np.load(ks_folder / 'spike_templates.npy')
+    tempScalingAmps = np.load(ks_folder / 'amplitudes.npy')
+    spikeAmps, spikeDepths, templateDepths, tempAmps, tempsUnW, templateDuration, waveform = \
+                template_positions_amplitudes(result['templates'], winv, ycoords, spikeTemplates, tempScalingAmps)
     
-    # Read templates.npy
-    templates_path = ks_folder / "templates.npy"
-    if templates_path.exists():
-        result["templates"] = np.load(templates_path)
-    
-    # Read cluster_info.tsv if available
-    cluster_info_path = ks_folder / "cluster_info.tsv"
-    if cluster_info_path.exists():
-        try:
-            import pandas as pd
-            result["cluster_info"] = pd.read_csv(cluster_info_path, sep='\t')
-        except ImportError:
-            # If pandas is not available, skip cluster_info
-            pass
+    # Read all the cluster info if available, and combine to a dataframe
+    df_cluster_info = None
+    for cluster_info_field in ['group', 'Amplitude', 'ContamPct', 'KSLabel']:
+        cluster_info_path = ks_folder / f"cluster_{cluster_info_field}.tsv"
 
+        if cluster_info_path.exists():
+            try:
+                import pandas as pd
+                df = pd.read_csv(cluster_info_path, sep='\t')
+            except ImportError:
+                # If pandas is not available, skip cluster_info
+                pass
+        if df_cluster_info is None:
+            df_cluster_info = df
+        else:
+            df_cluster_info = pd.merge(df_cluster_info, df)
+    result['spikeAmps'] = spikeAmps 
+    result['spikeDepths'] = spikeDepths
+    result['templateDepths'] = templateDepths
+    result['tempAmps'] = tempAmps
+    result['tempsUnW'] = tempsUnW
+    result['templateDuration'] = templateDuration
+    result['waveform'] = waveform
+    result['df_cluster_info'] = df_cluster_info
+        
     return result
 
 

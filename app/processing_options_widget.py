@@ -140,13 +140,11 @@ class ProcessingOptionsWidget(QWidget):
         """Initialize all modality options with default settings"""
         # Neuropixels AP
         ap_widget = ModalityOptionsWidget("Neuropixels AP")
-        ap_widget.enable_checkbox.setChecked(False)  # Default unchecked
         self.modality_widgets["Neuropixels AP"] = ap_widget
         self.container_layout.addWidget(ap_widget)
         
         # Neuropixels LFP
         lfp_widget = ModalityOptionsWidget("Neuropixels LFP")
-        lfp_widget.enable_checkbox.setChecked(True)  # Default checked
         lfp_widget.add_float_field("Sampling Frequency", 250.0, "Hz")
         lfp_widget.add_float_field("Cutoff frequency", 125.0, "Hz")
         self.modality_widgets["Neuropixels LFP"] = lfp_widget
@@ -154,21 +152,18 @@ class ProcessingOptionsWidget(QWidget):
         
         # Spike Sorting
         spikes_widget = ModalityOptionsWidget("Spike Sorting")
-        spikes_widget.enable_checkbox.setChecked(True)  # Default checked
         spikes_widget.add_float_field("Spike rate bin size", 0.1, "s")
         self.modality_widgets["Spike Sorting"] = spikes_widget
         self.container_layout.addWidget(spikes_widget)
         
         # NIDQ
         nidq_widget = ModalityOptionsWidget("NIDQ")
-        nidq_widget.enable_checkbox.setChecked(True)  # Default checked
         nidq_widget.add_string_field("Channels", "0,1,2,3")
         self.modality_widgets["NIDQ"] = nidq_widget
         self.container_layout.addWidget(nidq_widget)
         
         # Face Camera
         face_widget = ModalityOptionsWidget("Face Camera")
-        face_widget.enable_checkbox.setChecked(True)  # Default checked
         face_widget.add_checkbox_field("motSVD", default=True)
         face_widget.add_checkbox_field("movSVD", default=True)
         face_widget.add_checkbox_field("motion", default=True)
@@ -177,16 +172,27 @@ class ProcessingOptionsWidget(QWidget):
         
         # Pupil Physiology
         pupil_widget = ModalityOptionsWidget("Pupil Physiology")
-        pupil_widget.enable_checkbox.setChecked(False)  # Default unchecked
         self.modality_widgets["Pupil Physiology"] = pupil_widget
         self.container_layout.addWidget(pupil_widget)
         
         # Probe Location (Depth Table)
         probe_location_widget = ModalityOptionsWidget("Probe Location")
-        probe_location_widget.enable_checkbox.setChecked(True)  # Default checked
         self.modality_widgets["Probe Location"] = probe_location_widget
         self.container_layout.addWidget(probe_location_widget)
-        
+
+        # Set default Checked state by the ExtractionParam
+        params = ExtractionParams()
+        ap_widget.enable_checkbox.setChecked(params.extract_ap)
+        lfp_widget.enable_checkbox.setChecked(params.extract_lfp)
+        spikes_widget.enable_checkbox.setChecked(params.extract_spikes)
+        nidq_widget.enable_checkbox.setChecked(params.extract_nidq)
+        face_widget.enable_checkbox.setChecked(params.extract_face)
+        # face_widget["motSVD"].setChecked(params.extract_motSVD) # TODO how to access subwidget
+        # face_widget["movSVD"].setChecked(params.extract_movSVD)
+        # face_widget["motion"].setChecked(params.extract_motion)
+        pupil_widget.enable_checkbox.setChecked(params.extract_pupil)
+        probe_location_widget.enable_checkbox.setChecked(params.extract_probe_location)
+
         # Add stretch at the end
         self.container_layout.addStretch()
     

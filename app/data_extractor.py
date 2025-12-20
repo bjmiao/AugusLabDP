@@ -35,7 +35,7 @@ class ExtractionParams:
     extract_ap: bool = False
     
     # Neuropixels LFP
-    extract_lfp: bool = True
+    extract_lfp: bool = False
     lfp_sampling_freq: float = 250.0  # Hz
     lfp_cutoff_freq: float = 125.0   # Hz
     
@@ -44,14 +44,14 @@ class ExtractionParams:
     spike_rate_bin_size: float = 0.1  # s
 
     # NIDQ
-    extract_nidq: bool = True
+    extract_nidq: bool = False
     nidq_channels: str = "0,1,2,3"
     
     # Face Camera
-    extract_face: bool = True
-    extract_motSVD: bool = True
-    extract_movSVD: bool = True
-    extract_motion: bool = True
+    extract_face: bool = False
+    extract_motSVD: bool = False
+    extract_movSVD: bool = False
+    extract_motion: bool = False
 
     # Pupil Physiology
     extract_pupil: bool = False
@@ -135,6 +135,12 @@ class DataExtractor:
                 get_num_spikes, get_num_clusters, get_total_time, get_spike_rate_matrix
         except ImportError:
             return {"status": "error", "message": "readKS module not found"}
+        # Get the imec name for source file, and append to the output_folder
+        print(source.path)
+        imec_name = source.path.parent.name
+        output_folder = output_folder / imec_name
+        output_folder.mkdir(parents=True, exist_ok=True)
+        print(output_folder)
         # TODO: At this point we output the time binned spike rate. Later also store templates and the spike trains
         ks_data = readKS4(source.path)
         num_spikes = get_num_spikes(ks_data)
@@ -142,6 +148,12 @@ class DataExtractor:
         total_time = get_total_time(ks_data)
         spike_rate_matrix = get_spike_rate_matrix(ks_data, self.params.spike_rate_bin_size)
         np.save(output_folder / f"spike_rate_matrix_{int(self.params.spike_rate_bin_size * 1000)}ms.npy", spike_rate_matrix)
+        np.save(output_folder / f"templateDepths.npy", ks_data['templateDepths'])
+        np.save(output_folder / f"tempAmps.npy", ks_data['tempAmps'])
+        np.save(output_folder / f"waveform.npy", ks_data['waveform'])
+        if PANDAS_AVAILABLE and ks_data.get('df_cluster_info', None) is not None:
+            ks_data['df_cluster_info'].to_csv(output_folder / f"df_cluster_info.csv")
+
         return {"status": "success", "message": f"Spike data extracted for {num_spikes} spikes in {total_time} seconds"}
     
     def _extract_nidq(self, source, output_folder: Path) -> Dict[str, Any]:# Import readutil functions
