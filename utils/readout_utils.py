@@ -1,18 +1,36 @@
-import os
-import numpy as np
+"""Utilities for reading and processing neural data."""
+from __future__ import annotations
+
+from typing import Dict, List, Optional, Tuple, Union, Any
+
 import json
+import os
+
+import numpy as np
 import pandas as pd
 
-def combine_time_bins(matrix, bin_size=10):
+
+def combine_time_bins(matrix: np.ndarray, bin_size: int = 10) -> np.ndarray:
     """
     Combine time bins in a matrix with shape (#timestep, #neuron).
     
-    Parameters:
-    - matrix: numpy array with shape (#timestep, #neuron)
-    - bin_size: number of time bins to combine (default: 10)
+    This function averages consecutive time bins to reduce temporal resolution.
+    If the number of timesteps is not divisible by bin_size, the remaining
+    timesteps are averaged separately.
     
-    Returns:
-    - combined_matrix: numpy array with reduced number of timesteps
+    Parameters
+    ----------
+    matrix : np.ndarray
+        Input matrix with shape (n_timesteps, n_neurons) or (n_timesteps,).
+        If 1D, will be reshaped to 2D internally.
+    bin_size : int, default 10
+        Number of consecutive time bins to combine.
+    
+    Returns
+    -------
+    np.ndarray
+        Combined matrix with reduced number of timesteps.
+        Shape: (n_timesteps // bin_size + remainder, n_neurons) or 1D if input was 1D.
     """
     need_flatten = False
     if len(matrix.shape) == 1:
@@ -36,107 +54,234 @@ def combine_time_bins(matrix, bin_size=10):
     return combined
 
 
-def auguslab_manual_correct_ttl_button(nidq_ttl_button, nidq_sampling_rate, session_name, session_type):
-    '''
-        For specific sessions given session name, we manually change the value of nidq_ttl_camera_array.
-        We make in-place change to the nidq_ttl_button
-    ''' 
+def auguslab_manual_correct_ttl_button(
+    nidq_ttl_button: np.ndarray,
+    nidq_sampling_rate: float,
+    session_name: str,
+    session_type: str
+) -> None:
+    """
+    Manually correct TTL button signal for specific sessions.
+    
+    For certain session types (iso_day1, iso_day2), this function corrects
+    the TTL button signal by filling in gaps between button press events.
+    Modifies the array in-place.
+    
+    Parameters
+    ----------
+    nidq_ttl_button : np.ndarray
+        TTL button signal array to be corrected (modified in-place).
+    nidq_sampling_rate : float
+        Sampling rate of the NIDQ system (Hz).
+    session_name : str
+        Name of the experimental session.
+    session_type : str
+        Type of session (e.g., 'iso_day1', 'iso_day2', 'test2').
+    """
     if session_type == 'iso_day1' or session_type == 'iso_day2':
-        # get the up-edge for the button (TTL laser signal for syncope)
-        nidq_ttl_button_up = np.where( (nidq_ttl_button[:-1] == 1) & (nidq_ttl_button[1:] == 0))[0] 
+        # Get the up-edge for the button (TTL laser signal for syncope)
+        nidq_ttl_button_up = np.where(
+            (nidq_ttl_button[:-1] == 1) & (nidq_ttl_button[1:] == 0)
+        )[0]
+        # Fill in the gap between first and last button press
         nidq_ttl_button[nidq_ttl_button_up[0]:nidq_ttl_button_up[-1]] = 1
     elif session_name == 'test2':
+        # No correction needed for test2
         pass
-    return
 
-def auguslab_manual_create_experimental_tag(results, session_name, session_type):
-    session_start_time, session_stop_time = results['session_start_time'], results['session_stop_time']
-    # only one ttl square wave, meaning 
-    nidq_ttl_button = results['ttl_button']
-    # get the up-edge for the button (TTL laser signal for syncope)
-    nidq_ttl_button_up = np.where( (nidq_ttl_button[:-1] == 1) & (nidq_ttl_button[1:] == 0))[0]
+def auguslab_manual_create_experimental_tag(
+    results: Dict[str, Any],
+    session_name: str,
+    session_type: str
+) -> Dict[str, Tuple[float, float]]:
+    """
+    Create experimental period labels based on TTL button signals.
+    
+    This function analyzes TTL button signals to automatically segment
+    experimental sessions into different periods (e.g., Baseline, Laser, Recovery).
+    The segmentation logic varies by session type.
+    
+    Parameters
+    ----------
+    results : Dict[str, Any]
+        Dictionary containing session data including:
+        - 'session_start_time': Start time of session (float)
+        - 'session_stop_time': Stop time of session (float)
+        - 'ttl_button': TTL button signal array (np.ndarray)
+        - 'ttl_meta': Dictionary with 'niSampRate' key (float)
+    session_name : str
+        Name of the experimental session.
+    session_type : str
+        Type of session. Supported types:
+        - 'syncope': Syncope protocol with multiple laser stimulations
+        - 'ketamine': Ketamine administration protocol
+        - 'iso_day1' or 'iso_day2': Isoflurane protocols
+        - 'oxy_iso_day1' or 'oxy_iso_day2': Oxygen + Isoflurane protocols
+        - '52N_D4': Special protocol for session 52N_D4
+    
+    Returns
+    -------
+    Dict[str, Tuple[float, float]]
+        Dictionary mapping experimental period names to (start_time, stop_time) tuples.
+        Times are in seconds relative to session start.
+    """
+    session_start_time: float = results['session_start_time']
+    session_stop_time: float = results['session_stop_time']
+    nidq_ttl_button: np.ndarray = results['ttl_button']
+    
+    # Get the up-edge for the button (TTL laser signal transitions)
+    nidq_ttl_button_up = np.where(
+        (nidq_ttl_button[:-1] == 1) & (nidq_ttl_button[1:] == 0)
+    )[0]
     nidq_sampling_rate = float(results['ttl_meta']['niSampRate'])
     nidq_ttl_button_high_time = np.where(nidq_ttl_button == 1)[0] / nidq_sampling_rate
     nidq_ttl_button_up_time = nidq_ttl_button_up / nidq_sampling_rate
     if session_type == 'syncope':
-        # find 5 big chunks
-        threshold = 10 # in s, can be any value between 1 and 300
-        stim_train_start = [nidq_ttl_button_up_time[0]] + nidq_ttl_button_up_time[np.where(nidq_ttl_button_up_time[1:] - nidq_ttl_button_up_time[:-1] > threshold)[0] + 1].tolist()
-        stim_train_end = nidq_ttl_button_up_time[np.where(nidq_ttl_button_up_time[1:] - nidq_ttl_button_up_time[:-1] > threshold)[0]].tolist() + [nidq_ttl_button_up_time[-1]]
-        stim_train_start, stim_train_end = np.array(stim_train_start), np.array(stim_train_end)
-        assert len(stim_train_start) == 5
-        assert len(stim_train_end) == 5
+        # Find 5 big chunks (stimulation trains) separated by gaps > threshold
+        threshold = 10  # in seconds, can be any value between 1 and 300
+        # Find gaps between button up events
+        gaps = nidq_ttl_button_up_time[1:] - nidq_ttl_button_up_time[:-1]
+        large_gap_indices = np.where(gaps > threshold)[0]
+        
+        # Extract start and end times of each stimulation train
+        stim_train_start = (
+            [nidq_ttl_button_up_time[0]] +
+            nidq_ttl_button_up_time[large_gap_indices + 1].tolist()
+        )
+        stim_train_end = (
+            nidq_ttl_button_up_time[large_gap_indices].tolist() +
+            [nidq_ttl_button_up_time[-1]]
+        )
+        stim_train_start = np.array(stim_train_start)
+        stim_train_end = np.array(stim_train_end)
+        assert len(stim_train_start) == 5, f"Expected 5 stimulation trains, got {len(stim_train_start)}"
+        assert len(stim_train_end) == 5, f"Expected 5 stimulation trains, got {len(stim_train_end)}"
 
-        # correct for start_time and stop_time
+        # Correct for session start time (make times relative to session start)
         stim_train_start = stim_train_start - session_start_time
         stim_train_end = stim_train_end - session_start_time
-        tags = ["Baseline", "Laser(Phony)", "Recover 1", "Laser(5Hz)", "Recover 2", "Laser(10Hz)", "Recover 3", "Laser(20Hz)", "Recover 4", "Laser (20Hz,L)", "Recover 5"]
+        
+        # Define period tags for syncope protocol
+        tags = [
+            "Baseline", "Laser(Phony)", "Recover 1", "Laser(5Hz)", "Recover 2",
+            "Laser(10Hz)", "Recover 3", "Laser(20Hz)", "Recover 4",
+            "Laser (20Hz,L)", "Recover 5"
+        ]
+        
+        # Flatten start/end times and create period boundaries
         all_timelabels = [[start, stop] for start, stop in zip(stim_train_start, stim_train_end)]
-        all_timelabels = [x for xs in all_timelabels for x in xs] # flatten
+        all_timelabels = [x for xs in all_timelabels for x in xs]  # Flatten list
         period_start_timetag = [0] + all_timelabels
         period_end_timetag = all_timelabels + [session_stop_time - session_start_time]
-        # print(period_start_timetag, period_end_timetag)
-        experimental_label_tag = {}
+        
+        experimental_label_tag: Dict[str, Tuple[float, float]] = {}
         for tag, period_start, period_end in zip(tags, period_start_timetag, period_end_timetag):
             experimental_label_tag[tag] = (period_start, period_end)
     elif session_type == 'ketamine':
-        ketamine_onset = nidq_ttl_button_up_time[0] - session_start_time # correct for camera
-        experimental_label_tag = {'Baseline': (0, ketamine_onset),
-                    'Ketamine': (ketamine_onset, ketamine_onset+120),
-                    'Recover': (ketamine_onset+120, session_stop_time - session_start_time)}
+        # Ketamine protocol: single injection event
+        ketamine_onset = nidq_ttl_button_up_time[0] - session_start_time
+        experimental_label_tag = {
+            'Baseline': (0, ketamine_onset),
+            'Ketamine': (ketamine_onset, ketamine_onset + 120),
+            'Recover': (ketamine_onset + 120, session_stop_time - session_start_time)
+        }
     elif session_type == 'iso_day1' or session_type == 'iso_day2':
-        # only one ttl square wave
+        # Isoflurane protocol: single TTL square wave
         iso_onset = nidq_ttl_button_high_time[0] - session_start_time
         iso_offset = nidq_ttl_button_high_time[-1] - session_start_time
         tag = 'Iso'
-        if session_type == 'iso_day1': tag += '(5%)'
-        if session_type == 'iso_day2': tag += '(1.5%)'
+        if session_type == 'iso_day1':
+            tag += '(5%)'
+        if session_type == 'iso_day2':
+            tag += '(1.5%)'
           
-        experimental_label_tag = {'Baseline': (0, iso_onset),
-                                  tag:(iso_onset, iso_offset),
-                                  'Recover':(iso_offset, session_stop_time - session_start_time)}
+        experimental_label_tag = {
+            'Baseline': (0, iso_onset),
+            tag: (iso_onset, iso_offset),
+            'Recover': (iso_offset, session_stop_time - session_start_time)
+        }
     elif session_type == 'oxy_iso_day1' or session_type == 'oxy_iso_day2':
-        # one ttl pulse (turning on oxy)
+        # Oxygen + Isoflurane protocol: TTL pulse for oxygen, then isoflurane
         oxy_on_time = nidq_ttl_button_up_time[0] - session_start_time
-        threshold = 100 # in s, can be any number between 10 to 600
-        # iso_onset_index = np.where(nidq_ttl_button_up_time[1:] - nidq_ttl_button_up_time[:-1] > threshold)[0][0] # first such element
-
+        threshold = 100  # in seconds, can be any number between 10 to 600
+        # Isoflurane onset is the second TTL up event
         iso_onset_time = nidq_ttl_button_up_time[1] - session_start_time
         iso_offset_time = nidq_ttl_button_high_time[-1] - session_start_time
+        
         tag = 'Iso'
-        if session_type == 'oxy_iso_day1': tag += '(5%)'
-        if session_type == 'oxy_iso_day2': tag += '(1.5%)'
-        experimental_label_tag = {'Baseline' : (0, oxy_on_time),
-                                  'Oxygen': (oxy_on_time, iso_onset_time),
-                                  tag:(iso_onset_time, iso_offset_time),
-                                  'Recover':(iso_offset_time, session_stop_time - session_start_time)}
-
+        if session_type == 'oxy_iso_day1':
+            tag += '(5%)'
+        if session_type == 'oxy_iso_day2':
+            tag += '(1.5%)'
+        
+        experimental_label_tag = {
+            'Baseline': (0, oxy_on_time),
+            'Oxygen': (oxy_on_time, iso_onset_time),
+            tag: (iso_onset_time, iso_offset_time),
+            'Recover': (iso_offset_time, session_stop_time - session_start_time)
+        }
     elif session_type == '52N_D4':
-        # TODO: correct for the caera
-        experimental_label_tag = {'Baseline': (0, 600),
-                                'Oxygen': (600, 2400),
-                                'Iso 5%': (2400, 2460),
-                                'Recover1': (2460, 4200),
-                                'Iso 1.5%': (4200, 6000),
-                                'Recover2': (6000, 7227.3)}
+        # Special hardcoded protocol for session 52N_D4
+        # TODO: correct for the camera timing
+        experimental_label_tag = {
+            'Baseline': (0, 600),
+            'Oxygen': (600, 2400),
+            'Iso 5%': (2400, 2460),
+            'Recover1': (2460, 4200),
+            'Iso 1.5%': (4200, 6000),
+            'Recover2': (6000, 7227.3)
+        }
+    else:
+        raise ValueError(f"Unknown session_type: {session_type}")
+    
     return experimental_label_tag
 
-def auguslab_manual_correct_ttl_camera(nidq_ttl_camera, nidq_sampling_rate, session_name, session_type):
-    '''
-        For specific sessions given session name, we manually change the value of nidq_ttl_camera_array.
-        H
-        We make in-place change to the nidq_ttl_camera
-    '''
+def auguslab_manual_correct_ttl_camera(
+    nidq_ttl_camera: np.ndarray,
+    nidq_sampling_rate: float,
+    session_name: str,
+    session_type: str
+) -> None:
+    """
+    Manually correct TTL camera signal for specific sessions.
+    
+    For certain sessions, this function corrects the TTL camera signal
+    due to signal loss or artifacts. Modifies the array in-place.
+    
+    Parameters
+    ----------
+    nidq_ttl_camera : np.ndarray
+        TTL camera signal array to be corrected (modified in-place).
+    nidq_sampling_rate : float
+        Sampling rate of the NIDQ system (Hz).
+    session_name : str
+        Name of the experimental session.
+    session_type : str
+        Type of session.
+    """
     if session_name == 'test':
+        # No correction needed for test session
         pass
     elif session_name == 'test2':
+        # No correction needed for test2 session
         pass
-    return
 
 
-def interpolate_array(arr, target_size):
+def interpolate_array(arr: np.ndarray, target_size: int) -> np.ndarray:
     """
-    Interpolate array from its current size to target size using linear interpolation
+    Interpolate array from its current size to target size using linear interpolation.
+    
+    Parameters
+    ----------
+    arr : np.ndarray
+        Input array to interpolate (1D).
+    target_size : int
+        Desired size of the output array.
+    
+    Returns
+    -------
+    np.ndarray
+        Interpolated array of length target_size.
     """
     current_size = len(arr)
     
@@ -149,36 +294,111 @@ def interpolate_array(arr, target_size):
     
     return interpolated
 
-def get_cluster_region(template_depth, probe_depth_table):
+def get_cluster_region(
+    template_depth: np.ndarray,
+    probe_depth_table: pd.DataFrame
+) -> List[str]:
     """
-    Notice: the template_depth is tip (0) to base (max)
-        while the probe depth table is surface (0) to deep (max).
-        We consider the depth 0 is the deepset if probe_depth_table.
-     
-      template_depth: depth for each cluster (each unit)
-      probe_depth_table: depth table from the matlab file, a dataframe
+    Map cluster template depths to brain regions using probe depth table.
+    
+    Note: template_depth uses tip (0) to base (max) convention,
+    while probe_depth_table uses surface (0) to deep (max) convention.
+    The function transforms template_depth to match the probe depth table convention.
+    
+    Parameters
+    ----------
+    template_depth : np.ndarray
+        Depth for each cluster/unit, measured from tip (0) to base (max).
+    probe_depth_table : pd.DataFrame
+        Depth table from MATLAB file containing columns:
+        - 'start_depth': Start depth of each region (float)
+        - 'end_depth': End depth of each region (float)
+        - 'acronym': Brain region acronym (str)
+    
+    Returns
+    -------
+    List[str]
+        List of brain region acronyms for each cluster.
+        Returns 'root' for clusters outside the depth table range.
     """
 
     
-    # transform template_depth to depth on the probe
+    # Transform template_depth to depth on the probe
+    # (convert from tip-to-base to surface-to-deep)
     total_depth = probe_depth_table['end_depth'].max()
-    template_depth = total_depth - template_depth
+    template_depth_transformed = total_depth - template_depth
 
-    # find the region for each unit
-    cluster_region = []
-    for depth in template_depth:
-        l = np.where(probe_depth_table['start_depth'] <= depth)[0]
-        if len(l) == 0: # not included in the depth table, label root (ID=1)
-            region_id = 'root' # 0 is outside the brain
+    # Find the region for each unit
+    cluster_region: List[str] = []
+    for depth in template_depth_transformed:
+        # Find all regions where start_depth <= current depth
+        matching_regions = np.where(probe_depth_table['start_depth'] <= depth)[0]
+        if len(matching_regions) == 0:
+            # Not included in the depth table, label as 'root'
+            region_id = 'root'
         else:
-            region_id = probe_depth_table['acronym'][l[-1]] 
+            # Use the deepest matching region (last index)
+            region_id = probe_depth_table['acronym'].iloc[matching_regions[-1]]
         cluster_region.append(region_id)
     return cluster_region
 
-def load_dataset(data_folder, session_name, session_type, probe = 'all', probe_mapping = {}, need_modules = ['spike', 'video', 'ttl', 'eeg', 'ecg']):
+def load_dataset(
+    data_folder: str,
+    session_name: str,
+    session_type: str,
+    probe: Union[str, List[str]] = 'all',
+    probe_mapping: Dict[str, int] = None,
+    need_modules: List[str] = None
+) -> Dict[str, Any]:
+    """
+    Load neural dataset from session folder.
+    
+    This function loads various data modalities (spikes, video, TTL, EEG, ECG)
+    from a session folder and returns them in a structured dictionary.
+    
+    Parameters
+    ----------
+    data_folder : str
+        Path to the data folder containing session subdirectories.
+    session_name : str
+        Name of the session folder to load.
+    session_type : str
+        Type of session (e.g., 'syncope', 'ketamine', 'iso_day1').
+    probe : Union[str, List[str]], default 'all'
+        Which probe(s) to load. 'all' loads all probes found in session folder.
+    probe_mapping : Dict[str, int], optional
+        Dictionary mapping probe names to probe indices for region assignment.
+        If None, defaults to empty dict.
+    need_modules : List[str], optional
+        List of modules to load. Options: 'spike', 'video', 'ttl', 'eeg', 'ecg'.
+        If None, defaults to all modules.
+    
+    Returns
+    -------
+    Dict[str, Any]
+        Dictionary containing loaded data with keys:
+        - 'spike_matrix': np.ndarray, shape (n_timepoints, n_neurons)
+        - 'ttl_button': np.ndarray, TTL button signal
+        - 'ttl_camera': np.ndarray, TTL camera signal
+        - 'video_motion': np.ndarray, video motion energy
+        - 'video_motSVD': np.ndarray, video motion SVD components
+        - 'eeg': np.ndarray, EEG signal
+        - 'ecg': np.ndarray, ECG signal
+        - 'experimental_label_tag': Dict[str, Tuple[float, float]], experimental periods
+        - 'cluster_region': np.ndarray, brain region for each cluster
+        - 'has_*': bool flags indicating which modules were successfully loaded
+        - 'session_start_time': float, session start time in seconds
+        - 'session_stop_time': float, session stop time in seconds
+    """
+    if probe_mapping is None:
+        probe_mapping = {}
+    if need_modules is None:
+        need_modules = ['spike', 'video', 'ttl', 'eeg', 'ecg']
+    
     session_folder = os.path.join(data_folder, session_name)
-    results = {}
-    # load TTL first
+    results: Dict[str, Any] = {}
+    
+    # Load TTL first (needed for session timing)
     if 'ttl' in need_modules:
         try:
             nidq_meta = json.load(open(os.path.join(data_folder, session_name, "nidq_meta.json")))

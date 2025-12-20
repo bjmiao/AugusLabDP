@@ -1,24 +1,47 @@
-import sys
-import matplotlib.pyplot as plt
+"""Utilities for brain region mapping and visualization."""
+from __future__ import annotations
+
 import os
 from pathlib import Path
-import allensdk
+from typing import Dict, List, Optional, Tuple, Any
+
+import matplotlib.pyplot as plt
 import numpy as np
 from allensdk.core.reference_space_cache import ReferenceSpaceCache
+
+# Allen Brain Atlas reference space configuration
 reference_space_key = os.path.join('annotation', 'ccf_2017')
 resolution = 25
-# get home path
+# Get home path for cache directory
 output_dir = os.path.join(str(Path.home()), "allen_reference_atlas")
 
-rspc = ReferenceSpaceCache(resolution, reference_space_key, manifest=Path(output_dir) / 'manifest.json')
+# Initialize reference space cache
+rspc = ReferenceSpaceCache(
+    resolution, reference_space_key, manifest=Path(output_dir) / 'manifest.json'
+)
 # ID 1 is the adult mouse structure graph
 tree = rspc.get_structure_tree(structure_graph_id=1) 
 
-def mark_region_cluster(arr):
-    ''' Mark the boundary of regions
-        Input: arr
-        Output: [(repeat_element_1, start_1, end_1), (repeat_element_2, start_2, end_2)...] 
-     '''
+def mark_region_cluster(arr: np.ndarray) -> List[Tuple[Any, int, int]]:
+    """
+    Mark the boundaries of consecutive repeated regions in an array.
+    
+    This function identifies contiguous regions of the same value and returns
+    their boundaries as (element, start_index, end_index) tuples.
+    
+    Parameters
+    ----------
+    arr : np.ndarray
+        Input array containing region labels (can be strings, numbers, etc.).
+    
+    Returns
+    -------
+    List[Tuple[Any, int, int]]
+        List of tuples, each containing:
+        - element: The repeated element value
+        - start: Starting index (inclusive)
+        - end: Ending index (inclusive)
+    """
     n = len(arr)
     if n == 0:
         return []
@@ -38,8 +61,24 @@ def mark_region_cluster(arr):
     return repeats
 
 
-def get_meta_region(cluster_region_all):
-    ''' From meta region (e.g. VISp -> Cereblum)'''
+def get_meta_region(cluster_region_all: np.ndarray) -> np.ndarray:
+    """
+    Map brain region acronyms to their meta-regions.
+    
+    Converts specific brain region acronyms (e.g., 'VISp') to their
+    higher-level meta-regions (e.g., 'Cerebrum', 'Cerebellum', 'Brain stem').
+    
+    Parameters
+    ----------
+    cluster_region_all : np.ndarray
+        Array of brain region acronyms (e.g., ['VISp', 'CA1', 'TH']).
+    
+    Returns
+    -------
+    np.ndarray
+        Array of meta-region names corresponding to each input region.
+        Returns 'outside_brain' for regions not in the brain.
+    """
     meta_region_all = []
     for region in cluster_region_all:
         if region == 'outside_brain':
@@ -63,34 +102,70 @@ def get_meta_region(cluster_region_all):
     meta_region_all = np.array(meta_region_all)
     return meta_region_all
 
-meta_region_color_map = {
+# Color mapping for meta-regions in visualizations
+meta_region_color_map: Dict[str, str] = {
     'Cerebrum': '#B0F0FF',
-    'Cerebral cortex':'#B0FFB8',
-    'Cerebral nuclei':'#98D6F9',
-
-    'Brain stem':'#FF7080',
-    'Interbrain':'#FF7080',
-    'Midbrain':'#FF64FF',
-    'Hindbrain':'#FF9B88',
-    
-
-    'Cerebellum':'#F0F080',
-    'Cerebellar cortex':'#F0F080',
-    'Cerebellar nuclei':'#F0F080'
+    'Cerebral cortex': '#B0FFB8',
+    'Cerebral nuclei': '#98D6F9',
+    'Brain stem': '#FF7080',
+    'Interbrain': '#FF7080',
+    'Midbrain': '#FF64FF',
+    'Hindbrain': '#FF9B88',
+    'Cerebellum': '#F0F080',
+    'Cerebellar cortex': '#F0F080',
+    'Cerebellar nuclei': '#F0F080'
 }
 
-condition_labep_map = {
+# Label mapping for experimental conditions
+condition_label_map: Dict[str, str] = {
     'iso': 'Isoflurane',
     'syncope': 'Syncope'
 }
-condition_color_map = {
+
+# Color mapping for experimental conditions
+condition_color_map: Dict[str, str] = {
     'iso': '#F89B50',
     'syncope': '#5B84C4',
 }
-def plot_region_mark(cluster_region, ax = None, orientation = 'v', reversed = None,
-                     show_figure = True, meta_region_color_map = meta_region_color_map):
+def plot_region_mark(
+    cluster_region: np.ndarray,
+    ax: Optional[Any] = None,
+    orientation: str = 'v',
+    reversed: Optional[bool] = None,
+    show_figure: bool = True,
+    meta_region_color_map: Optional[Dict[str, str]] = None
+) -> Optional[Any]:
+    """
+    Plot brain region boundaries as colored spans on an axis.
+    
+    This function visualizes brain regions along a probe track, showing
+    both specific regions and their meta-regions with different colors.
+    
+    Parameters
+    ----------
+    cluster_region : np.ndarray
+        Array of brain region acronyms for each cluster/unit.
+    ax : Optional[Any], default None
+        Matplotlib axes object. If None, creates a new figure.
+    orientation : str, default 'v'
+        Orientation of the plot: 'v'/'vertical' or 'h'/'horizontal'.
+    reversed : Optional[bool], default None
+        Whether to reverse the order of regions. If None, defaults to True for 'v'.
+    show_figure : bool, default True
+        Whether to display the figure immediately.
+    meta_region_color_map : Optional[Dict[str, str]], default None
+        Color mapping for meta-regions. If None, uses module default.
+    
+    Returns
+    -------
+    Optional[Any]
+        Returns the axes object if show_figure is False, otherwise None.
+    """
+    if meta_region_color_map is None:
+        meta_region_color_map = globals()['meta_region_color_map']
+    
     if reversed is None:
-        reversed = True if orientation == 'v' else 'False'
+        reversed = True if orientation == 'v' else False
     if reversed:
         cluster_region = cluster_region[::-1]
     region_rep = mark_region_cluster(cluster_region)
@@ -105,7 +180,7 @@ def plot_region_mark(cluster_region, ax = None, orientation = 'v', reversed = No
         orientation = 'h'
     else:
         raise ValueError('Orientation can only be v/vertical/h/horizontal')
-    if ax == None:
+    if ax is None:
         if orientation == 'h':
             fig, ax = plt.subplots(figsize=(10, 2))
         elif orientation == 'v':
@@ -149,21 +224,47 @@ def plot_region_mark(cluster_region, ax = None, orientation = 'v', reversed = No
     else:
         return ax
     
-TARGET_REGION_LIST = [
-    'TH', #thalamus
-    'HY', # hypothalamus
-    'HPF', # Hippocampal formation
-    'BS', # brain stem
-    'CTX', # cortex
-    'CNU', # cerebral nuclei
+# Target brain regions for simplified classification
+TARGET_REGION_LIST: List[str] = [
+    'TH',   # Thalamus
+    'HY',   # Hypothalamus
+    'HPF',  # Hippocampal formation
+    'BS',   # Brain stem
+    'CTX',  # Cortex
+    'CNU',  # Cerebral nuclei
 ]
 
-def get_meta_region_by_target_list(region, target_region_list = TARGET_REGION_LIST):
+
+def get_meta_region_by_target_list(
+    region: str,
+    target_region_list: List[str] = None
+) -> str:
+    """
+    Map a brain region to one of the target meta-regions.
+    
+    This function checks if the given region belongs to any of the target
+    regions by examining the structure hierarchy path.
+    
+    Parameters
+    ----------
+    region : str
+        Brain region acronym to classify.
+    target_region_list : List[str], optional
+        List of target region acronyms. If None, uses TARGET_REGION_LIST.
+    
+    Returns
+    -------
+    str
+        Target region acronym if found, otherwise 'other'.
+    """
+    if target_region_list is None:
+        target_region_list = TARGET_REGION_LIST
+    
     path = tree.get_structures_by_acronym([region])[0]['structure_id_path']
-    for target_region in TARGET_REGION_LIST:
+    for target_region in target_region_list:
         region_id = tree.get_structures_by_acronym([target_region])[0]['id']
         if region_id in path:
             return target_region
-    # if not among the list
+    # If not among the target list
     return 'other'
 
