@@ -199,7 +199,7 @@ def plot_region_mark(
             ax.axvline(end, color='black')
         ax.axvline(0, color='black')
         ax.set_xticks(tickpos, ticklabels)
-        ax.set_xlim(0, 383)
+        # ax.set_xlim(0, 383)
         ax.set_yticks([], [])
     else: # ori == 'v'
         for i, (region, start, end) in enumerate(meta_region_rep):
@@ -211,7 +211,7 @@ def plot_region_mark(
             ax.axhline(end, color='black')
         ax.set_yticks(tickpos, ticklabels)
         ax.axhline(0, color='black')
-        ax.set_ylim(0, 383)
+        # ax.set_ylim(0, 383)
         ax.set_xticks([], [])
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
@@ -225,15 +225,18 @@ def plot_region_mark(
         return ax
     
 # Target brain regions for simplified classification
-TARGET_REGION_LIST: List[str] = [
-    'TH',   # Thalamus
-    'HY',   # Hypothalamus
-    'HPF',  # Hippocampal formation
-    'BS',   # Brain stem
-    'CTX',  # Cortex
-    'CNU',  # Cerebral nuclei
-]
+# TODO: this is buggy now since some region names are not in the tree
+# TARGET_REGION_LIST: List[str] =  [
+# "ACA", "AI", "BLA", "BMA", "BST", "DORpm", "DORsm", "HPC", "ILA", "LA", "LS", "LZ",
+# "MBmot", "MBsta", "MEZ", "MOp", "MOs", "OLF", "ORB", "P", "PA", "PALd", "PALm", "PALv",
+# "PIR", "PL", "PVR", "PVZ", "RSP", "SC", "SSp", "SSs", "STRd", "STRv", "sAMY", 
+# "TH", 'HY', 'HPF', 'BS', 'CTX', 'CNU']
 
+TARGET_REGION_LIST: List[str] =  ["TH", 'HY', 'HPF', 'BS', 'CTX', 'CNU']
+
+# The TARGET REGION LIST should ensure that no former region will be the parent region for latter regions
+# So we do a topology sort on them 
+TARGET_REGION_LIST = sorted(TARGET_REGION_LIST, key = lambda x: len(tree.get_structures_by_acronym([x])[0]['structure_id_path'])) 
 
 def get_meta_region_by_target_list(
     region: str,

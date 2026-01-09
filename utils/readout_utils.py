@@ -356,6 +356,8 @@ def load_dataset(
     This function loads various data modalities (spikes, video, TTL, EEG, ECG)
     from a session folder and returns them in a structured dictionary.
     
+    When TTL camera is presented, the spikes, EEG and ECG and TTL_button needs to be corrected by the video time.
+    
     Parameters
     ----------
     data_folder : str
@@ -407,7 +409,7 @@ def load_dataset(
         except FileNotFoundError as e:
             results['has_ttl_meta'] = False
         try:
-            nidq_ttl_camera = np.load(os.path.join(data_folder, session_name, "nidq_TTL_camera.npy"))
+            nidq_ttl_camera = np.load(os.path.join(data_folder, session_name, "nidq_TTL_Camera.npy"))
             results['has_ttl_camera'] = True
             # Go through a lab-specific manual correction for camera TTL signal due to signal loss in some sessions
             auguslab_manual_correct_ttl_camera(nidq_ttl_camera, float(nidq_meta['niSampRate']), session_name, session_type)
@@ -417,14 +419,20 @@ def load_dataset(
             session_stop_time = nidq_ttl_camera_high[-1] / float(nidq_meta['niSampRate'])
             results['session_start_time'] = session_start_time
             results['session_stop_time'] = session_stop_time
+            results['session_duration'] = session_stop_time - session_start_time
         except FileNotFoundError as e:
             results['has_ttl_camera'] = False
             results['session_start_time'] = 0
             results['session_stop_time'] = len(nidq_ttl_camera) / float(nidq_meta['niSampRate'])
+            results['session_duration'] = session_stop_time - session_start_time
         try:
-            nidq_ttl_button = np.load(os.path.join(data_folder, session_name, "nidq_TTL_button.npy"))
+            nidq_ttl_button = np.load(os.path.join(data_folder, session_name, "nidq_TTL_Button.npy"))
             results['has_ttl_button'] = True
             auguslab_manual_correct_ttl_button(nidq_ttl_button, float(nidq_meta['niSampRate']), session_name, session_type)
+            if results['has_ttl_camera']:
+                session_start_index = int(results['session_start_time'] * float(nidq_meta['niSampRate']))
+                session_stop_index = int(results['session_stop_time'] * float(nidq_meta['niSampRate']))
+                nidq_ttl_button = nidq_ttl_button[session_start_index:session_stop_index]
             results['ttl_button'] = nidq_ttl_button
             experimental_label_tag = auguslab_manual_create_experimental_tag(results, session_name, session_type)
             results['experimental_label_tag'] = experimental_label_tag
@@ -472,7 +480,6 @@ def load_dataset(
                 results['has_cluster_region'] = True
         else:
             raise NotImplementedError
-
         # If TTL camera is presented, correct the spike matrix by the video time
         if results['has_ttl_camera']:
             session_start_index = int(results['session_start_time'] / spike_timebin)
@@ -527,3 +534,38 @@ def load_dataset(
     else:
         results['has_nidq_ecg'] = False
     return results
+
+def get_all_probe_mapping(data_folder: str, datasets: List[str] = ['ketamine','iso', 'syncope']) -> Dict[str, Any]:
+    """
+    Get the probe mapping for all datasets.
+    """
+    df_probe_mapping = {}
+    for dataset in datasets:
+        probe_info_path = os.path.join(data_folder, f"{dataset}_session_mapping.csv")
+        df = pd.read_csv(probe_info_path, header = None)
+        df.columns = ['animal', 'session', 'probe', 'probenum']
+        df_probe_mapping[dataset] = df
+    return df_probe_mapping
+
+
+if __name__ == "__main__":
+    from pathlib import Path
+
+    # Here is an example of how to use the load_dataset function
+    data_folder = Path(r"C:\Users\bjmiao\The Augustine Lab Dropbox\Benjie Miao\Benjie_Jonny\SSA_Benjie\DPcachedata\\")
+    session_info_path = data_folder / 'session_info.csv'
+    df_session_info = pd.read_csv(session_info_path)
+    print(df_session_info.head())
+
+    df_probe_mapping = get_all_probe_mapping(data_folder)
+    [print(dataset, len(df_probe_mapping[dataset])) for dataset in df_probe_mapping.keys()]
+
+    session_index = 0
+    item = df_session_info.iloc[session_index]
+    session_name = item['session']
+    print("Now loading session: ", session_name)
+    df = df_probe_mapping[item['dataset']]
+    df = df[df.session == item['session']]
+    probe_mapping = {probe:probenum for probe, probenum in zip(df['probe'], df['probenum'])}
+    results = load_dataset(data_folder / item['dataset'], item['session'], item['type'], probe='all', probe_mapping = probe_mapping)
+    print(list(results.keys()))
