@@ -81,7 +81,10 @@ def Int2Volts(meta):
             maxInt = 512
         fI2V = float(meta['imAiRangeMax'])/maxInt
     elif meta['typeThis'] == 'nidq':
-        maxInt = int(meta['niMaxInt'])
+        if 'niMaxInt' in meta:
+            maxInt = int(meta['niMaxInt'])
+        else:
+            maxInt = 512
         fI2V = float(meta['niAiRangeMax'])/maxInt
     elif meta['typeThis'] == 'obx':
         maxInt = int(meta['obMaxInt'])
