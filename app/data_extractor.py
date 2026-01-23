@@ -7,6 +7,7 @@ from typing import Dict, Optional, Any
 from dataclasses import dataclass, field
 import numpy as np
 import json
+import shutil
 
 # Import readutil functions
 try:
@@ -231,8 +232,9 @@ class DataExtractor:
     
     def _extract_pupil(self, source, output_folder: Path) -> Dict[str, Any]:
         """Extract pupil physiology data"""
-        # TODO: Implement pupil extraction
-        return {"status": "not_implemented", "message": "Pupil extraction not yet implemented"}
+        shutil.copy(source.path, output_folder / f"pupil.csv")
+        print(f"Extracting pupil data from {source.path}")
+        return {"status": "success", "message": "Pupil extracted"}
 
     def _extract_probe_location(self, source, output_folder: Path) -> Dict[str, Any]:
         try:
