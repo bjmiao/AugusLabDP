@@ -133,6 +133,7 @@ def plot_region_mark(
     orientation: str = 'v',
     reversed: Optional[bool] = None,
     show_figure: bool = True,
+    fill_ratio: float = 0.5,
     meta_region_color_map: Optional[Dict[str, str]] = None
 ) -> Optional[Any]:
     """
@@ -192,25 +193,25 @@ def plot_region_mark(
     if orientation == 'h':
         for i, (region, start, end) in enumerate(meta_region_rep):
             color = meta_region_color_map.get(region, 'white')
-            ax.axvspan(start - 0.5, end + 0.5, alpha=0.3, color=color)
+            ax.axvspan(start - 0.5, end + 0.5, ymin = 1 - fill_ratio, alpha=0.2, color=color)
         for i, (region, start, end) in enumerate(region_rep):
             tickpos.append((start+end) / 2)
             ticklabels.append(region)
-            ax.axvline(end, color='black')
-        ax.axvline(0, color='black')
+            ax.axvline(end, 1 - fill_ratio, 1, color='black', linewidth=0.5)
+        ax.axvline(0, 1 - fill_ratio, 1, color='black')
         ax.set_xticks(tickpos, ticklabels)
         # ax.set_xlim(0, 383)
         ax.set_yticks([], [])
     else: # ori == 'v'
         for i, (region, start, end) in enumerate(meta_region_rep):
             color = meta_region_color_map.get(region, 'white')
-            ax.axhspan(start - 0.5, end + 0.5, alpha=0.3, color=color)
+            ax.axhspan(start - 0.5, end + 0.5, xmin = 1 - fill_ratio, alpha=0.2, color=color)
         for i, (region, start, end) in enumerate(region_rep):
             tickpos.append((start+end) / 2)
             ticklabels.append(region)
-            ax.axhline(end, color='black')
+            ax.axhline(end, 1 - fill_ratio, 1, color='black', linewidth=0.5)
         ax.set_yticks(tickpos, ticklabels)
-        ax.axhline(0, color='black')
+        ax.axhline(0, 1 - fill_ratio, 1, color='black')
         # ax.set_ylim(0, 383)
         ax.set_xticks([], [])
     ax.spines['top'].set_visible(False)
@@ -271,3 +272,4 @@ def get_meta_region_by_target_list(
     # If not among the target list
     return 'other'
 
+ 

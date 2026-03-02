@@ -56,3 +56,25 @@ def plot_ecg_with_r_peaks(ecg: np.ndarray, r_peaks_in_seconds: np.ndarray,
     ax.set_title('ECG with R-peaks')
     ax.set_xlim(start_time, stop_time)
     return fig, ax
+
+if __name__ == '__main__':
+    from pathlib import Path
+    folder = Path(r'C:\Users\bjmiao\The Augustine Lab Dropbox\Benjie Miao\Benjie_Jonny\SSA_Benjie\DPcachedata\iso\14T_5378529_AP_Amy_Day2_g0')
+    ecg_file = folder / 'nidq_ECG.npy'
+    ecg = np.load(ecg_file)
+    
+    sampling_rate = 42372.8
+    r_peaks_in_seconds, threshold = find_r_peaks(ecg, sampling_rate)
+    # To plot the ECG with the R peaks
+    # fig, ax = plot_ecg_with_r_peaks(ecg, r_peaks_in_seconds, start_time = 3000, stop_time = 3020, sample_rate = sampling_rate)
+    
+    total_time = len(ecg) / sampling_rate
+    bpm = get_heart_rate(r_peaks_in_seconds, total_time, timebin = 1, temporal_smoothing_window = 3)
+    # To plot the BPM
+    # plt.plot(bpm)
+    # plt.xlabel('Time (s)')
+    # plt.ylabel('BPM')
+    # plt.title('BPM over time')
+    # plt.legend()
+    # plt.show()
+

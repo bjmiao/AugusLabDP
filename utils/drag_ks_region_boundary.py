@@ -1,4 +1,4 @@
-from PyQt5 import QtCore, QtGui, QtWidgets
+from PyQt6 import QtCore, QtGui, QtWidgets
 import pyqtgraph as pg
 import pyqtgraph.exporters
 import numpy as np
@@ -30,7 +30,7 @@ class Setup():
     def init_layout(self, main_window, offline=False):
         self.resize(1600, 800)
         self.setWindowTitle('Electrophysiology Atlas')
-        self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        self.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Expanding)
         self.offline = offline
         main_widget = QtWidgets.QWidget()
         self.setCentralWidget(main_widget)
@@ -507,7 +507,7 @@ class Setup():
             # Add line edit and completer to be able to search for subject
             self.subj_combobox.setLineEdit(QtWidgets.QLineEdit())
             subj_completer = QtWidgets.QCompleter()
-            subj_completer.setCaseSensitivity(QtCore.Qt.CaseInsensitive)
+            subj_completer.setCaseSensitivity(QtCore.Qt.CaseSensitivity.CaseInsensitive)
             self.subj_combobox.setCompleter(subj_completer)
             self.subj_combobox.setModel(self.subj_list)
             self.subj_combobox.completer().setModel(self.subj_list)
@@ -591,7 +591,7 @@ class Setup():
             for i, val in enumerate(options):
 
                 button = QtWidgets.QCheckBox(val)
-                button.setCheckState(QtCore.Qt.Unchecked)
+                button.setCheckState(QtCore.Qt.CheckState.Unchecked)
 
                 self.desc_buttons.addButton(button, id=i)
                 self.desc_layout.addWidget(button)
@@ -603,7 +603,7 @@ class Setup():
             self.qc_dialog.resize(300, 150)
             self.qc_dialog.accepted.connect(self.qc_button_clicked)
             buttonBox = QtWidgets.QDialogButtonBox(
-                QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
+                QtWidgets.QDialogButtonBox.StandardButton.Ok | QtWidgets.QDialogButtonBox.StandardButton.Cancel)
             buttonBox.accepted.connect(self.qc_dialog.accept)
             buttonBox.rejected.connect(self.qc_dialog.reject)
             #
@@ -691,6 +691,18 @@ class Setup():
         self.set_axis(self.fig_img, 'bottom')
         self.fig_data_ax = self.set_axis(self.fig_img, 'left',
                                          label='Distance from probe tip (uV)')
+
+        # Generate random 380x1000 matrix and plot as heatmap
+        # Matrix dimensions: 380 rows (depth) x 1000 columns (time/channels)
+        random_matrix = np.random.rand(380, 1000)
+        # Create ImageItem for the heatmap
+        # pyqtgraph ImageItem: first dimension (rows) maps to y-axis, second (cols) to x-axis
+        img_item = pg.ImageItem(random_matrix, autoLevels=True)
+        self.fig_img.addItem(img_item)
+        # Set the position and scale to match the probe dimensions
+        # x-axis: 0 to 1000 (time/channels), y-axis: probe_tip to probe_top (depth)
+        img_item.setRect(QtCore.QRectF(0, self.probe_tip - self.probe_extra, 
+                                       1000, self.probe_top - self.probe_tip + 2 * self.probe_extra))
 
         self.fig_img_cb = pg.PlotItem()
         self.fig_img_cb.setMaximumHeight(70)
@@ -1017,10 +1029,10 @@ class MainWindow(QtWidgets.QMainWindow, Setup):
         Initialise variables
         """
         # Line styles and fonts
-        self.kpen_dot = pg.mkPen(color='k', style=QtCore.Qt.DotLine, width=2)
-        self.rpen_dot = pg.mkPen(color='r', style=QtCore.Qt.DotLine, width=2)
-        self.kpen_solid = pg.mkPen(color='k', style=QtCore.Qt.SolidLine, width=2)
-        self.bpen_solid = pg.mkPen(color='b', style=QtCore.Qt.SolidLine, width=3)
+        self.kpen_dot = pg.mkPen(color='k', style=QtCore.Qt.PenStyle.DotLine, width=2)
+        self.rpen_dot = pg.mkPen(color='r', style=QtCore.Qt.PenStyle.DotLine, width=2)
+        self.kpen_solid = pg.mkPen(color='k', style=QtCore.Qt.PenStyle.SolidLine, width=2)
+        self.bpen_solid = pg.mkPen(color='b', style=QtCore.Qt.PenStyle.SolidLine, width=3)
         self.bar_colour = QtGui.QColor(160, 160, 160)
 
         # Padding to add to figures to make sure always same size viewbox
@@ -1349,4 +1361,4 @@ if __name__ == '__main__':
     app = QtWidgets.QApplication([])
     mainapp = MainWindow()
     mainapp.show()
-    app.exec_()
+    app.exec()

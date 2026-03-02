@@ -372,7 +372,7 @@ def load_dataset(
         Dictionary mapping probe names to probe indices for region assignment.
         If None, defaults to empty dict.
     need_modules : List[str], optional
-        List of modules to load. Options: 'spike', 'video', 'ttl', 'eeg', 'ecg'.
+        List of modules to load. Options: 'spike', 'video', 'ttl', 'eeg', 'ecg', 'pupil'
         If None, defaults to all modules.
     
     Returns
@@ -395,7 +395,7 @@ def load_dataset(
     if probe_mapping is None:
         probe_mapping = {}
     if need_modules is None:
-        need_modules = ['spike', 'video', 'ttl', 'eeg', 'ecg']
+        need_modules = ['spike', 'video', 'ttl', 'eeg', 'ecg', 'pupil']
     
     session_folder = os.path.join(data_folder, session_name)
     results: Dict[str, Any] = {}
@@ -533,7 +533,64 @@ def load_dataset(
             results['has_nidq_ecg'] = False
     else:
         results['has_nidq_ecg'] = False
+    if 'pupil' in need_modules:
+        try:
+            pupil_data = pd.read_csv(os.path.join(session_folder, 'pupil.csv'), index_col = 0, header = [0, 1, 2])
+            results['pupil'] = pupil_data
+            results['has_pupil'] = True
+        except FileNotFoundError as e:
+            results['has_pupil'] = False
+    else:
+        results['has_pupil'] = False
     return results
+
+# Find the projection point on the line fit by brain_entrance and brain_exit
+def find_projection_point(brain_entrance, brain_exit, point):
+    distance = np.dot(brain_exit - brain_entrance, point - brain_entrance) / np.dot(brain_exit - brain_entrance, brain_exit - brain_entrance)
+    # print(np.sqrt(np.dot(brain_exit - brain_entrance, point - brain_entrance)))
+    return brain_entrance + distance * (brain_exit - brain_entrance)
+
+def get_probe_points_info(probe_ccf_file):
+    import scipy.io
+    probe_ccf = scipy.io.loadmat(probe_ccf_file)
+
+    num_probes = probe_ccf['probe_ccf']['trajectory_coords'].shape[0]
+    assert probe_ccf['probe_ccf']['points'].shape[0] == num_probes
+    assert probe_ccf['probe_ccf']['trajectory_areas'].shape[0] == num_probes
+
+    probe_points_info = []
+    for i in range(num_probes):
+        points = probe_ccf['probe_ccf']['points'][i].item()
+        trajectory_coords = probe_ccf['probe_ccf']['trajectory_coords'][i].item()
+        trajectory_areas = probe_ccf['probe_ccf']['trajectory_areas'][i].item()
+        # print(points.shape)
+        # print(trajectory_coords.shape)
+        # print(trajectory_areas.shape)
+        brain_entrance = trajectory_coords[0, :].astype(np.float32)
+        brain_exit = trajectory_coords[1, :].astype(np.float32)
+        # We find the furtherest point from brain_entrance, to be the depth of the probe
+
+        # Find the line fitted by brain entrance and brain exit, then project the points to the line, and calculate the distance
+        # Find the furthest point from the line, to be the depth of the probe
+        max_distance = 0
+        for point_idx in range(points.shape[0]):
+
+            projection_point = find_projection_point(brain_entrance, brain_exit, points[point_idx, :])
+            projection_point = np.array(projection_point, dtype=np.int32)
+            distance = np.sqrt(np.dot(projection_point - brain_entrance, projection_point - brain_entrance))
+
+            if distance > max_distance:
+                max_distance = distance
+        max_distance = max_distance * 10 # brain slice to um
+        probe_points_info.append({
+            'points': points,
+            'trajectory_coords': trajectory_coords,
+            'trajectory_areas': trajectory_areas,
+            'brain_entrance': brain_entrance,
+            'brain_exit': brain_exit,
+            'max_distance': max_distance
+        })
+    return probe_points_info
 
 def get_all_probe_mapping(data_folder: str, datasets: List[str] = ['ketamine','iso', 'syncope']) -> Dict[str, Any]:
     """
@@ -542,8 +599,7 @@ def get_all_probe_mapping(data_folder: str, datasets: List[str] = ['ketamine','i
     df_probe_mapping = {}
     for dataset in datasets:
         probe_info_path = os.path.join(data_folder, f"{dataset}_session_mapping.csv")
-        df = pd.read_csv(probe_info_path, header = None)
-        df.columns = ['animal', 'session', 'probe', 'probenum']
+        df = pd.read_csv(probe_info_path)
         df_probe_mapping[dataset] = df
     return df_probe_mapping
 
