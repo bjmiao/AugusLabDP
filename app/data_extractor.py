@@ -109,6 +109,7 @@ class DataExtractor:
                 elif source.data_type == "Probe Location" and self.params.extract_probe_location:
                     results[source.name] = self._extract_probe_location(source, output_folder)
             except Exception as e:
+                raise e
                 results[source.name] = {"error": str(e)}
         
         return results
@@ -200,8 +201,13 @@ class DataExtractor:
                     digArray = ExtractDigital(rawData, firstSamp, lastSamp, 0, [2], meta)[0]
                     digArray = digArray.flatten()
                     np.save(output_folder / f"nidq_TTL_Button.npy", digArray)
+                elif channel == 4: # TTL Laser Signal, for Syncope
+                    digArray = ExtractDigital(rawData, firstSamp, lastSamp, 0, [3], meta)[0]
+                    digArray = digArray.flatten()
+                    np.save(output_folder / f"nidq_TTL_Laser.npy", digArray)
+
             except Exception as e:
-                print(e)
+                print("Error", e)
                 failed_channels.append(channel)
                 status = "error"
         if status == "error":
@@ -257,26 +263,34 @@ class DataExtractor:
         depth_table = depth_table.flatten()
 
         # Convert the depth table to a dictionary of probe information
-        all_probes_dict = []
-        for probe_id in range(depth_table.shape[0] - 1): # last field is path
-            probe_info_dict = {
-                'start_depth': [],
-                'end_depth': [],
-                'acronym': [],
-                'full_name': [],
-                'region_id': []
-            }
-            for segment_id in range(depth_table[probe_id].shape[0]):
-                start_depth = depth_table[probe_id][segment_id][0].item()
-                end_depth = depth_table[probe_id][segment_id][1].item()
-                acronym = depth_table[probe_id][segment_id][2].item()[0]
-                full_name = depth_table[probe_id][segment_id][3].item()[0]
-                region_id = depth_table[probe_id][segment_id][4].item()
-                probe_info_dict['start_depth'].append(start_depth)
-                probe_info_dict['end_depth'].append(end_depth)
-                probe_info_dict['acronym'].append(acronym)
-                probe_info_dict['full_name'].append(full_name)
-                probe_info_dict['region_id'].append(region_id)
-            all_probes_dict.append(probe_info_dict)
-        np.save(output_folder / f"all_probes_location.npy", all_probes_dict, allow_pickle=True)
-        return {"status": "success", "message": f"Probe location data extracted for {len(all_probes_dict)} probes"}
+        num_probes = depth_table.shape[0] - 1 # last field is path
+        for probe_id in range(num_probes):
+            try:
+                probe_info_dict = {
+                    'start_depth': [],
+                    'end_depth': [],
+                    'acronym': [],
+                    'full_name': [],
+                    'region_id': []
+                }
+                for segment_id in range(depth_table[probe_id].shape[0]):
+                    start_depth = depth_table[probe_id][segment_id][0].item()
+                    end_depth = depth_table[probe_id][segment_id][1].item()
+                    acronym = depth_table[probe_id][segment_id][2]
+                    full_name = depth_table[probe_id][segment_id][3]
+                    region_id = depth_table[probe_id][segment_id][4].item()
+                    while type(acronym) is not str:
+                        acronym = acronym.item()
+                    while type(full_name) is not str:
+                        full_name = full_name.item()
+                    probe_info_dict['start_depth'].append(start_depth)
+                    probe_info_dict['end_depth'].append(end_depth)
+                    probe_info_dict['acronym'].append(acronym)
+                    probe_info_dict['full_name'].append(full_name)
+                    probe_info_dict['region_id'].append(region_id)
+                df_probe = pd.DataFrame.from_records(probe_info_dict)
+                df_probe.to_csv(output_folder / f'probe_{probe_id + 1}_location.csv') # +1 to Matlab 1-base
+            except Exception as e:
+                print(f'Probe ID {probe_id+1} extraction failed')
+                continue
+        return {"status": "success", "message": f"Probe location data extracted for {num_probes} probes"}
