@@ -19,6 +19,7 @@ class DataSource:
     enabled: bool = True
     description: str = ""
     bin_file: Optional[Path] = None  # Path to the actual bin file if applicable
+    label: Optional[str] = None  # Optional label (e.g., "sharptrack", "AP_histology")
     
     def __str__(self):
         return f"{self.name} ({self.data_type})"
@@ -166,16 +167,37 @@ class DataDetector:
                     ))
     
     def _scan_depth_table(self):
-        """Scan for depth table file"""
-        depth_table = self.folder_path / "depth_table.mat"
-        if depth_table.exists():
+        """Scan for depth table file - supports sharptrack and AP_histology formats"""
+               
+        # Check for AP_histology format: probe_ccf.mat. In priority
+        point_ccf = self.folder_path / "probe_ccf.mat"
+        if point_ccf.exists():
             self.sources.append(DataSource(
-                name="Depth Table (depth_table.mat)",
+                name="Depth Table (point_ccf.mat)",
                 data_type="Probe Location",
-                path=depth_table,
-                description="Probe insertion location data"
+                path=point_ccf,
+                description="Probe insertion location data (AP_histology)",
+                label="AP_histology"
             ))
-    
+            return  # Only add one depth table source
+       
+        # Check for sharptrack format: depth_table + [anything]_pointtrack.mat
+        # Check for depth_table_full.mat file
+        # TODO: this is a temporary solution to get the full depth table. Fix should be done in sharptrack later.
+        depth_table = self.folder_path / "depth_table_full.mat"
+        if depth_table.exists():
+            sharptrack_pattern = re.compile(r'^.*track.*\.mat$')
+            for item in self.folder_path.iterdir():
+                if item.is_file() and sharptrack_pattern.match(item.name):
+                    self.sources.append(DataSource(
+                        name=f"Depth Table (depth_table + {item.name})",
+                        data_type="Probe Location",
+                        path=item,
+                        description="Probe insertion location data (sharptrack)",
+                        label="sharptrack"
+                    ))
+                    return  # Only add one depth table source
+        
     def get_enabled_sources(self) -> List[DataSource]:
         """Get only the enabled data sources"""
         return [source for source in self.sources if source.enabled]

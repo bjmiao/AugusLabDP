@@ -211,7 +211,7 @@ class DataExtractor:
     
     def _extract_face(self, source, output_folder: Path) -> Dict[str, Any]:
         """Extract face camera data"""
-        print(source.path)
+        # print(source.path)
         face_data = np.load(str(source.path), allow_pickle=True).item()
         if self.params.extract_motSVD:
             motSVD = face_data['motSVD'][1]
@@ -236,11 +236,16 @@ class DataExtractor:
         except ImportError:
             return {"status": "error", "message": "scipy is not installed"}
 
+        print(source)
         try:
             mat_data = loadmat(str(source.path))
         except Exception as e:
             return {"status": "error", "message": f"Error loading depth table file: {e}"}
-
+        if source.label == "AP_histology":
+            probe_ccf = mat_data['probe_ccf']
+            print(probe_ccf)
+        else:
+            return {"status": "error", "message": f"Unknown depth table format: {source.label}"}
         depth_table = None
         for key in mat_data.keys():
             if not key.startswith('__'):  # Skip MATLAB metadata keys

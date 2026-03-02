@@ -44,6 +44,12 @@ class DataSourceItem(QWidget):
         type_label.setStyleSheet("color: gray;")
         name_type_layout.addWidget(type_label)
         
+        # Label badge (if available)
+        if hasattr(source, 'label') and source.label:
+            label_badge = QLabel(f"[{source.label}]")
+            label_badge.setStyleSheet("color: #0066cc; font-weight: bold; font-size: 10px; padding: 2px 6px; background-color: #e6f2ff; border-radius: 3px;")
+            name_type_layout.addWidget(label_badge)
+        
         name_type_layout.addStretch()
         info_layout.addLayout(name_type_layout)
         
