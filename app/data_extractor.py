@@ -153,6 +153,8 @@ class DataExtractor:
         np.save(output_folder / f"templateDepths.npy", ks_data['templateDepths'])
         np.save(output_folder / f"tempAmps.npy", ks_data['tempAmps'])
         np.save(output_folder / f"waveform.npy", ks_data['waveform'])
+        np.save(output_folder / f"spike_times.npy", ks_data['spike_times'])
+        np.save(output_folder / f"spike_clusters.npy", ks_data['spike_clusters'])
         if PANDAS_AVAILABLE and ks_data.get('df_cluster_info', None) is not None:
             ks_data['df_cluster_info'].to_csv(output_folder / f"df_cluster_info.csv")
 
