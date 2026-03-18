@@ -33,6 +33,7 @@ from .readout_utils import (
 from .brain_region_utils import (
     mark_region_cluster,
     get_meta_region,
+    get_meta_region_IBL,
     plot_region_mark,
     get_meta_region_by_target_list,
     meta_region_color_map,
@@ -62,6 +63,7 @@ __all__ = [
     # Brain region utilities
     'mark_region_cluster',
     'get_meta_region',
+    'get_meta_region_IBL',
     'plot_region_mark',
     'get_meta_region_by_target_list',
     'meta_region_color_map',

@@ -13,7 +13,8 @@ import seaborn as sns
 from sklearn.decomposition import PCA
 from sklearn.metrics.pairwise import cosine_similarity
 
-from .readout_utils import combine_time_bins
+
+from readout_utils import combine_time_bins
 # Seed colors for trajectory visualization
 # Each tuple contains (start_color, end_color) for a time period
 SEED_COLORS: List[Tuple[str, str]] = [
@@ -246,5 +247,4 @@ def plot_overall(
     ax_ttl_camera.set_ylabel("TTL Camera")
 
     fig.tight_layout()
-    fig.show()
     return fig, ax_3d

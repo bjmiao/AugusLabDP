@@ -296,7 +296,8 @@ def interpolate_array(arr: np.ndarray, target_size: int) -> np.ndarray:
 
 def get_cluster_region(
     template_depth: np.ndarray,
-    probe_depth_table: pd.DataFrame
+    probe_depth_table: pd.DataFrame,
+    probe_depth: float = None
 ) -> List[str]:
     """
     Map cluster template depths to brain regions using probe depth table.
@@ -314,6 +315,9 @@ def get_cluster_region(
         - 'start_depth': Start depth of each region (float)
         - 'end_depth': End depth of each region (float)
         - 'acronym': Brain region acronym (str)
+    probe_depth: float, optional
+        Depth of the probe, used to transform the template depth to the probe depth.
+        If None, the maximum depth of the probe depth table is used.
     
     Returns
     -------
@@ -325,8 +329,8 @@ def get_cluster_region(
     
     # Transform template_depth to depth on the probe
     # (convert from tip-to-base to surface-to-deep)
-    total_depth = probe_depth_table['end_depth'].max()
-    template_depth_transformed = total_depth - template_depth
+    probe_depth = probe_depth if probe_depth is not None else probe_depth_table['end_depth'].max()
+    template_depth_transformed = probe_depth - template_depth
 
     # Find the region for each unit
     cluster_region: List[str] = []
@@ -460,12 +464,12 @@ def load_dataset(
 
                 # try get the cluster region
                 templateDepths = np.load(os.path.join(session_folder, probe_path, "templateDepths.npy"))
-                probe_index = probe_mapping.get(probe_name, None)
+                probe_index, probe_depth = probe_mapping.get(probe_name, None)
                 if probe_index is not None:
                     try:
                         df_depth_table = pd.read_csv(os.path.join(session_folder, f"probe_{probe_index}_location.csv"))
                         results['depth_table'] = df_depth_table
-                        cluster_region = get_cluster_region(templateDepths, df_depth_table)
+                        cluster_region = get_cluster_region(templateDepths, df_depth_table, probe_depth)
                         all_cluster_region.append(cluster_region)
                     except Exception as e:
                         print(e)
@@ -616,12 +620,14 @@ if __name__ == "__main__":
     df_probe_mapping = get_all_probe_mapping(data_folder)
     [print(dataset, len(df_probe_mapping[dataset])) for dataset in df_probe_mapping.keys()]
 
-    session_index = 0
+    session_index = 10
     item = df_session_info.iloc[session_index]
     session_name = item['session']
     print("Now loading session: ", session_name)
     df = df_probe_mapping[item['dataset']]
     df = df[df.session == item['session']]
-    probe_mapping = {probe:probenum for probe, probenum in zip(df['probe'], df['probenum'])}
+    probe_mapping = {probe:(probenum, depth) for probe, probenum, depth in zip(df['probe'], df['probenum'], df['probe_depth'])}
     results = load_dataset(data_folder / item['dataset'], item['session'], item['type'], probe='all', probe_mapping = probe_mapping)
+    print(probe_mapping)
     print(list(results.keys()))
+    print(results['cluster_region'])

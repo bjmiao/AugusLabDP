@@ -81,7 +81,7 @@ def get_meta_region(cluster_region_all: np.ndarray) -> np.ndarray:
     """
     meta_region_all = []
     for region in cluster_region_all:
-        if region == 'outside_brain':
+        if region == 'outside_brain' or region == 'other':
             meta_region_all.append('outside_brain')
             continue
         path = tree.get_structures_by_acronym([region])[0]['structure_id_path']
@@ -113,7 +113,19 @@ meta_region_color_map: Dict[str, str] = {
     'Hindbrain': '#FF9B88',
     'Cerebellum': '#F0F080',
     'Cerebellar cortex': '#F0F080',
-    'Cerebellar nuclei': '#F0F080'
+    'Cerebellar nuclei': '#F0F080',
+
+    'CH': '#B0F0FF',
+    'CTX': '#B0FFB8',
+    'CNU': '#98D6F9',
+    'BS': '#FF7080',
+    'IB': '#FF7080',
+    'MB': '#FF64FF',
+    'HB': '#FF9B88',
+    'CB': '#F0F080',
+    'CBX': '#F0F080',
+    'CBN': '#F0F080',
+
 }
 
 # Label mapping for experimental conditions
@@ -195,6 +207,7 @@ def plot_region_mark(
             color = meta_region_color_map.get(region, 'white')
             ax.axvspan(start - 0.5, end + 0.5, ymin = 1 - fill_ratio, alpha=0.2, color=color)
         for i, (region, start, end) in enumerate(region_rep):
+            if end - start < 10: continue
             tickpos.append((start+end) / 2)
             ticklabels.append(region)
             ax.axvline(end, 1 - fill_ratio, 1, color='black', linewidth=0.5)
@@ -207,6 +220,7 @@ def plot_region_mark(
             color = meta_region_color_map.get(region, 'white')
             ax.axhspan(start - 0.5, end + 0.5, xmin = 1 - fill_ratio, alpha=0.2, color=color)
         for i, (region, start, end) in enumerate(region_rep):
+            if end - start < 10: continue
             tickpos.append((start+end) / 2)
             ticklabels.append(region)
             ax.axhline(end, 1 - fill_ratio, 1, color='black', linewidth=0.5)
@@ -272,4 +286,46 @@ def get_meta_region_by_target_list(
     # If not among the target list
     return 'other'
 
- 
+def get_meta_region_IBL(cluster_region_all: np.ndarray) -> np.ndarray:
+    """
+    Map brain region acronyms to their meta-regions.
+    
+    Converts specific brain region acronyms (e.g., 'VISp') to their
+    higher-level meta-regions (e.g., 'Cerebrum', 'Cerebellum', 'Brain stem').
+    
+    Parameters
+    ----------
+    cluster_region_all : np.ndarray
+        Array of brain region acronyms (e.g., ['VISp', 'CA1', 'TH']).
+    
+    Returns
+    -------
+    np.ndarray
+        Array of meta-region names corresponding to each input region.
+        Returns 'outside_brain' for regions not in the brain.
+    """
+    import pandas as pd
+    region_info = r"E:\Projects\SSA\AugusLabDP\utils\region_info.csv"
+    region_info = pd.read_csv(region_info)
+    bottomline_meta_region = ['Isocortex', 'OLF', 'HPF', 'CNU', 'CTXsp', 'TH', 'HY', 'MB', 'HB', 'fiber tracts', 'VS']
+    meta_region_all = []
+    for region in cluster_region_all:
+        if region == 'outside_brain':
+            meta_region_all.append('outside_brain')
+            continue
+        region_id_path = tree.get_structures_by_acronym([region])[0]['structure_id_path']
+        is_found = False
+        for i in range(len(region_id_path)-1, -1, -1):
+            region_name = tree.get_structures_by_id([region_id_path[i]])[0]['acronym']
+            if region_name in region_info['Beryl'].values:
+                meta_region_all.append(region_name)
+                is_found = True
+                break
+            elif region_name in bottomline_meta_region:
+                meta_region_all.append(region_name)
+                is_found = True
+                break
+        if not is_found:
+            meta_region_all.append('other')
+    meta_region_all = np.array(meta_region_all)
+    return meta_region_all

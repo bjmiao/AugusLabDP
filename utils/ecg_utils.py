@@ -41,6 +41,33 @@ def get_heart_rate(r_peaks_in_seconds: np.ndarray,
         bpm = gaussian_filter(bpm, temporal_smoothing_window)
     return bpm * 60 / timebin
 
+def get_heart_rate_variability(r_peaks_in_seconds: np.ndarray,
+                               total_time: float, timebin: float, 
+                               temporal_smoothing_window: int = 3) -> np.ndarray:
+    """
+    Get the heart rate variability from the R peaks.
+    """
+
+    # Calculate RMSSD in each time bin
+    bins = np.arange(0, total_time, timebin)
+    rmssd = np.zeros(len(bins) - 1)
+    for i in range(len(bins) - 1):
+        # Find all R-peaks within this time bin
+        mask = (r_peaks_in_seconds >= bins[i]) & (r_peaks_in_seconds < bins[i + 1])
+        r_peaks_in_bin = r_peaks_in_seconds[mask]
+        # Calculate RR intervals within the bin
+        rr_intervals = np.diff(r_peaks_in_bin)
+        # Calculate successive differences
+        rr_diff = np.diff(rr_intervals)
+        if len(rr_diff) > 0:
+            rmssd[i] = np.sqrt(np.mean(rr_diff ** 2))
+        else:
+            rmssd[i] = np.nan  # Not enough data to compute RMSSD
+    # Optional temporal smoothing
+    if temporal_smoothing_window > 0:
+        rmssd = gaussian_filter(rmssd, temporal_smoothing_window)
+    return rmssd
+
 def plot_ecg_with_r_peaks(ecg: np.ndarray, r_peaks_in_seconds: np.ndarray,
                           start_time: float, stop_time: float, sampling_rate: float) -> None:
     """
@@ -57,6 +84,12 @@ def plot_ecg_with_r_peaks(ecg: np.ndarray, r_peaks_in_seconds: np.ndarray,
     ax.set_xlim(start_time, stop_time)
     return fig, ax
 
+def ecg_to_bpm(ecg, sampling_rate):
+    r_peaks_in_seconds, threshold = find_r_peaks(ecg, sampling_rate)
+    total_time = len(ecg) / sampling_rate
+    bpm = get_heart_rate(r_peaks_in_seconds, total_time, timebin = 1, temporal_smoothing_window = 3)
+    return bpm
+    
 if __name__ == '__main__':
     from pathlib import Path
     folder = Path(r'C:\Users\bjmiao\The Augustine Lab Dropbox\Benjie Miao\Benjie_Jonny\SSA_Benjie\DPcachedata\iso\14T_5378529_AP_Amy_Day2_g0')
