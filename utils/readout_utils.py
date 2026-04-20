@@ -85,8 +85,13 @@ def auguslab_manual_correct_ttl_button(
         )[0]
         # Fill in the gap between first and last button press
         nidq_ttl_button[nidq_ttl_button_up[0]:nidq_ttl_button_up[-1]] = 1
-    elif session_name == 'test2':
+
+    elif session_name == '53N_5569716_ACC_Amy_Ket_day1_g0' or session_name == '55N_5616735_RSP_AI_Ket_day2_g0':
+        first_button_up = np.where(nidq_ttl_button == 1)[0][0]
+        time_mask = 5 # in seconds, first button up is failed ketamine IP injection so remove
+        nidq_ttl_button[first_button_up:first_button_up + int(time_mask * nidq_sampling_rate)] = 0
         # No correction needed for test2
+    else:
         pass
 
 def auguslab_manual_create_experimental_tag(
@@ -107,7 +112,7 @@ def auguslab_manual_create_experimental_tag(
         Dictionary containing session data including:
         - 'session_start_time': Start time of session (float)
         - 'session_stop_time': Stop time of session (float)
-        - 'ttl_button': TTL button signal array (np.ndarray)
+        - 'ttl_button': TTL button signal array, already corrected by the camera timing (np.ndarray)
         - 'ttl_meta': Dictionary with 'niSampRate' key (float)
     session_name : str
         Name of the experimental session.
@@ -125,16 +130,17 @@ def auguslab_manual_create_experimental_tag(
         Dictionary mapping experimental period names to (start_time, stop_time) tuples.
         Times are in seconds relative to session start.
     """
-    session_start_time: float = results['session_start_time']
-    session_stop_time: float = results['session_stop_time']
+    # session_start_time: float = results['session_start_time']
+    # session_stop_time: float = results['session_stop_time']
+    session_duration: float = results['session_duration']
     nidq_ttl_button: np.ndarray = results['ttl_button']
     
     # Get the up-edge for the button (TTL laser signal transitions)
-    nidq_ttl_button_up = np.where(
-        (nidq_ttl_button[:-1] == 1) & (nidq_ttl_button[1:] == 0)
-    )[0]
     nidq_sampling_rate = float(results['ttl_meta']['niSampRate'])
     nidq_ttl_button_high_time = np.where(nidq_ttl_button == 1)[0] / nidq_sampling_rate
+    nidq_ttl_button_up = np.where(
+        (nidq_ttl_button[1:] == 1) & (nidq_ttl_button[:-1] == 0)
+    )[0]
     nidq_ttl_button_up_time = nidq_ttl_button_up / nidq_sampling_rate
     if session_type == 'syncope':
         # Find 5 big chunks (stimulation trains) separated by gaps > threshold
@@ -157,38 +163,34 @@ def auguslab_manual_create_experimental_tag(
         assert len(stim_train_start) == 5, f"Expected 5 stimulation trains, got {len(stim_train_start)}"
         assert len(stim_train_end) == 5, f"Expected 5 stimulation trains, got {len(stim_train_end)}"
 
-        # Correct for session start time (make times relative to session start)
-        stim_train_start = stim_train_start - session_start_time
-        stim_train_end = stim_train_end - session_start_time
-        
         # Define period tags for syncope protocol
         tags = [
             "Baseline", "Laser(Phony)", "Recover 1", "Laser(5Hz)", "Recover 2",
             "Laser(10Hz)", "Recover 3", "Laser(20Hz)", "Recover 4",
-            "Laser (20Hz,L)", "Recover 5"
+            "Laser(20Hz,Long)", "Recover 5"
         ]
         
         # Flatten start/end times and create period boundaries
         all_timelabels = [[start, stop] for start, stop in zip(stim_train_start, stim_train_end)]
         all_timelabels = [x for xs in all_timelabels for x in xs]  # Flatten list
         period_start_timetag = [0] + all_timelabels
-        period_end_timetag = all_timelabels + [session_stop_time - session_start_time]
+        period_end_timetag = all_timelabels + [session_duration]
         
         experimental_label_tag: Dict[str, Tuple[float, float]] = {}
         for tag, period_start, period_end in zip(tags, period_start_timetag, period_end_timetag):
             experimental_label_tag[tag] = (period_start, period_end)
     elif session_type == 'ketamine':
         # Ketamine protocol: single injection event
-        ketamine_onset = nidq_ttl_button_up_time[0] - session_start_time
+        ketamine_onset = nidq_ttl_button_up_time[0]
         experimental_label_tag = {
             'Baseline': (0, ketamine_onset),
             'Ketamine': (ketamine_onset, ketamine_onset + 120),
-            'Recover': (ketamine_onset + 120, session_stop_time - session_start_time)
+            'Recover': (ketamine_onset + 120, session_duration)
         }
     elif session_type == 'iso_day1' or session_type == 'iso_day2':
         # Isoflurane protocol: single TTL square wave
-        iso_onset = nidq_ttl_button_high_time[0] - session_start_time
-        iso_offset = nidq_ttl_button_high_time[-1] - session_start_time
+        iso_onset = nidq_ttl_button_high_time[0]
+        iso_offset = nidq_ttl_button_high_time[-1]
         tag = 'Iso'
         if session_type == 'iso_day1':
             tag += '(5%)'
@@ -198,15 +200,16 @@ def auguslab_manual_create_experimental_tag(
         experimental_label_tag = {
             'Baseline': (0, iso_onset),
             tag: (iso_onset, iso_offset),
-            'Recover': (iso_offset, session_stop_time - session_start_time)
+            'Recover': (iso_offset, session_duration)
         }
     elif session_type == 'oxy_iso_day1' or session_type == 'oxy_iso_day2':
         # Oxygen + Isoflurane protocol: TTL pulse for oxygen, then isoflurane
-        oxy_on_time = nidq_ttl_button_up_time[0] - session_start_time
-        threshold = 100  # in seconds, can be any number between 10 to 600
-        # Isoflurane onset is the second TTL up event
-        iso_onset_time = nidq_ttl_button_up_time[1] - session_start_time
-        iso_offset_time = nidq_ttl_button_high_time[-1] - session_start_time
+        oxy_on_time = nidq_ttl_button_up_time[0]
+
+        # TODO: slightly hardcoded
+        threshold = 10 # in seconds, time after the oxygen on
+        iso_onset_time = nidq_ttl_button_up_time[np.where(nidq_ttl_button_up_time > oxy_on_time + threshold)[0][0]]
+        iso_offset_time = nidq_ttl_button_high_time[-1]
         
         tag = 'Iso'
         if session_type == 'oxy_iso_day1':
@@ -218,18 +221,19 @@ def auguslab_manual_create_experimental_tag(
             'Baseline': (0, oxy_on_time),
             'Oxygen': (oxy_on_time, iso_onset_time),
             tag: (iso_onset_time, iso_offset_time),
-            'Recover': (iso_offset_time, session_stop_time - session_start_time)
+            'Recover': (iso_offset_time, session_duration)
         }
     elif session_type == '52N_D4':
         # Special hardcoded protocol for session 52N_D4
         # TODO: correct for the camera timing
+        session_start_time = results['session_start_time']
         experimental_label_tag = {
-            'Baseline': (0, 600),
-            'Oxygen': (600, 2400),
-            'Iso 5%': (2400, 2460),
-            'Recover1': (2460, 4200),
-            'Iso 1.5%': (4200, 6000),
-            'Recover2': (6000, 7227.3)
+            'Baseline': (0, 600 - session_start_time),
+            'Oxygen': (600 - session_start_time, 2400 - session_start_time),
+            'Iso 5%': (2400 - session_start_time, 2460 - session_start_time),
+            'Recover1': (2460 - session_start_time, 4200 - session_start_time),
+            'Iso 1.5%': (4200 - session_start_time, 6000 - session_start_time),
+            'Recover2': (6000 - session_start_time, results['session_duration'])
         }
     else:
         raise ValueError(f"Unknown session_type: {session_type}")
@@ -478,6 +482,16 @@ def load_dataset(
             all_spike_matrix = [matrix[:, :align_timestep] for matrix in all_spike_matrix]
             all_spike_matrix = np.concatenate(all_spike_matrix, axis = 0)
             results['spike_matrix'] = all_spike_matrix
+
+            # get the spike time and the clusters for the spikes
+            spike_times_all = []
+            for probe_index, probe_path in enumerate(all_probes):
+                probe_name = os.path.basename(probe_path)
+                spike_times = np.load(os.path.join(session_folder, probe_path, "spike_times.npy"))
+                spike_clusters = np.load(os.path.join(session_folder, probe_path, "spike_clusters.npy"))
+                spike_times_all.append((spike_times, spike_clusters))
+            results['spike_times'] = spike_times_all
+
             if results.get('has_cluster_region', True):
                 all_cluster_region = np.concatenate(all_cluster_region)
                 results['cluster_region'] = all_cluster_region
