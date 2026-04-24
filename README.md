@@ -1,20 +1,34 @@
 # AugusLab Data Preprocessing Dashboard
 
-A Python Qt-based dashboard application for Neuropixels data preprocessing. This software loads SpikeGLX binary files, runs preprocessing steps, integrates behavioral camera and pupil physiology metrics, and organizes all outputs as NumPy `.npy` files.
+A Python Qt-based dashboard application for Neuropixels data preprocessing. The app scans data folders, detects available sources (Neuropixels AP/LFP, Kilosort outputs, NIDQ, face camera, pupil CSVs, and probe location MAT files), and exports extracted outputs to `cachedata/` (or a custom output folder).
 
 ## Features
 
-- Load SpikeGLX binary files
-- Run preprocessing pipeline
-- Load behavioral camera data
-- Load pupil physiology metrics
-- Export organized NumPy arrays (.npy files)
+- Multi-folder dataset loading from the GUI
+- Automatic source detection for:
+  - Neuropixels AP/LFP streams
+  - Kilosort spike-sorting folders
+  - NIDQ files
+  - Face camera `.npy` files
+  - Pupil `.csv` files
+  - Probe location `.mat` files
+- Per-modality extraction options from the dashboard
+- Output export as NumPy arrays and CSV files (depending on modality)
 
 ## Requirements
 
-- Python 3.8 or higher
-- PyQt6
-- NumPy
+- Python 3.9 or higher
+- Core dependencies:
+  - PyQt6
+  - NumPy
+  - SciPy
+  - pandas
+  - matplotlib
+- Optional utility/analysis dependencies (for scripts under `utils/`):
+  - seaborn
+  - scikit-learn
+  - pyqtgraph
+  - allensdk
 
 ## Installation
 
@@ -29,12 +43,34 @@ cd AugusLabDP
 pip install -r requirements.txt
 ```
 
+Optional utility dependencies (used by scripts under `utils/`):
+```bash
+pip install -r requirements-utils.txt
+```
+
+For package-based installs, you can also use:
+```bash
+pip install .
+```
+
+Or include utility extras from `pyproject.toml`:
+```bash
+pip install ".[utils]"
+```
+
 ## Usage
 
 Run the main application:
 ```bash
 python main.py
 ```
+
+Basic workflow:
+1. Click **Add Folder(s)** to add one or more dataset folders.
+2. Select a folder to preview detected data sources.
+3. Configure extraction options in the right panel.
+4. Confirm the output folder (default: `cachedata/`).
+5. Click **Start Extracting Data**.
 
 ## Project Structure
 
@@ -43,10 +79,16 @@ AugusLabDP/
 ├── main.py              # Application entry point
 ├── app/                 # Main application package
 │   ├── __init__.py
-│   ├── main_window.py  # Main GUI window
+│   ├── main_window.py   # Main GUI window
+│   ├── data_detector.py # Source detection logic
+│   ├── data_analyzer.py # Source overview logic
+│   ├── data_extractor.py # Extraction pipeline
+│   ├── readutil/         # SpikeGLX / Kilosort readers
 │   └── ...
+├── utils/               # Optional analysis/helper scripts
 ├── requirements.txt     # Python dependencies
-├── LICENSE             # MIT License
+├── pyproject.toml       # Project metadata and optional extras
+├── LICENSE              # MIT License
 └── README.md           # This file
 ```
 

@@ -7,7 +7,7 @@ name = "auguslab-dp"
 version = "0.1.0"
 description = "Dashboard software for Neuropixels data preprocessing"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 license = {text = "MIT"}
 authors = [
     {name = "AugusLab"}
@@ -17,7 +17,6 @@ classifiers = [
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -25,13 +24,21 @@ classifiers = [
 ]
 
 dependencies = [
-    "PyQt6>=6.6.0",
-    "numpy>=1.24.0",
-    "scipy>=1.10.0",
-    "pandas>=2.0.0",
+    "PyQt6~=6.6.0",
+    "numpy~=1.26.0",
+    "scipy~=1.11.0",
+    "pandas~=2.1.0",
+    "matplotlib~=3.8.0",
 ]
 
 [project.optional-dependencies]
+utils = [
+    "seaborn~=0.13.0",
+    "scikit-learn~=1.4.0",
+    "pyqtgraph~=0.13.0",
+    "allensdk~=2.16.0",
+    "mne~=1.6.0",
+]
 dev = [
     "pytest>=7.0.0",
     "black>=23.0.0",
@@ -44,10 +51,10 @@ packages = ["app"]
 
 [tool.black]
 line-length = 100
-target-version = ['py38']
+target-version = ['py39']
 
 [tool.mypy]
-python_version = "3.8"
+python_version = "3.9"
 warn_return_any = true
 warn_unused_configs = true
 
