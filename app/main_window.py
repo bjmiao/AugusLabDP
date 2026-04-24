@@ -18,6 +18,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 from pathlib import Path
+import json
 from app.data_detector import DataDetector
 from app.data_extractor import DataExtractor
 from app.data_source_widget import DataSourceListWidget
@@ -34,6 +35,8 @@ class MainWindow(QMainWindow):
         self.folders: list[Path] = []
         self.current_folder: Path = None
         self.detector: DataDetector = None
+        self.repo_root = Path(__file__).parent.parent
+        self.folder_presets_file = self.repo_root / ".dataset_folders.json"
         
         # Central widget
         central_widget = QWidget()
@@ -83,6 +86,10 @@ class MainWindow(QMainWindow):
         self.remove_folders_button = QPushButton("Remove Folder(s)")
         self.remove_folders_button.clicked.connect(self.remove_folders)
         folder_buttons_layout.addWidget(self.remove_folders_button)
+
+        self.clear_saved_folders_button = QPushButton("Clear Saved")
+        self.clear_saved_folders_button.clicked.connect(self.clear_saved_folders)
+        folder_buttons_layout.addWidget(self.clear_saved_folders_button)
         
         folder_panel_layout.addLayout(folder_buttons_layout)
         folder_panel.setLayout(folder_panel_layout)
@@ -121,8 +128,7 @@ class MainWindow(QMainWindow):
         
         self.output_folder_line = QLineEdit()
         # Set default output folder to repository root / cachedata
-        repo_root = Path(__file__).parent.parent  # Go up from app/main_window.py to project root
-        default_output = repo_root / "cachedata"
+        default_output = self.repo_root / "cachedata"
         self.output_folder_line.setText(str(default_output))
         output_folder_layout.addWidget(self.output_folder_line)
         
@@ -151,7 +157,11 @@ class MainWindow(QMainWindow):
         main_layout.addLayout(bottom_layout)
         
         # Status bar
-        self.statusBar().showMessage("Ready - Add folders to begin")
+        self._load_preset_folders()
+        if self.folders:
+            self.statusBar().showMessage(f"Loaded {len(self.folders)} preset folder(s)")
+        else:
+            self.statusBar().showMessage("Ready - Add folders to begin")
     
     def browse_output_folder(self):
         """Open folder dialog to select output folder"""
@@ -184,6 +194,7 @@ class MainWindow(QMainWindow):
             if folder_path not in self.folders:
                 self.folders.append(folder_path)
                 self.folder_list.addItem(str(folder_path))
+                self._save_preset_folders()
                 self.statusBar().showMessage(f"Added folder: {folder_path.name}")
 
             else:
@@ -212,6 +223,7 @@ class MainWindow(QMainWindow):
                 self.folders.remove(folder_path)
             row = self.folder_list.row(item)
             self.folder_list.takeItem(row)
+        self._save_preset_folders()
         
         # If current folder was removed, clear data sources
         if self.current_folder and self.current_folder not in self.folders:
@@ -220,6 +232,29 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Folder removed - Select another folder to view data")
         
         self.statusBar().showMessage(f"Removed {len(selected_items)} folder(s)")
+
+    def clear_saved_folders(self):
+        """Clear all folders from UI and preset storage."""
+        if not self.folders:
+            self.statusBar().showMessage("No saved folders to clear")
+            return
+
+        confirm = QMessageBox.question(
+            self,
+            "Clear Saved Folders",
+            "Remove all dataset folders and clear saved presets?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+
+        self.folders.clear()
+        self.folder_list.clear()
+        self.current_folder = None
+        self.data_source_widget.set_sources([])
+        # self._save_preset_folders()
+        self.statusBar().showMessage("Cleared all saved folders")
     
     def _on_folder_selected(self):
         """Handle folder selection from list"""
@@ -317,3 +352,36 @@ class MainWindow(QMainWindow):
         print(results_all)
 
         self.statusBar().showMessage(f"{success_count} / {len(results_all)} sources extracted successfully")
+
+    def _load_preset_folders(self):
+        """Load previously saved dataset folders from local settings file."""
+        if not self.folder_presets_file.exists():
+            return
+
+        try:
+            with open(self.folder_presets_file, "r", encoding="utf-8") as f:
+                folder_paths = json.load(f)
+        except Exception:
+            return
+
+        if not isinstance(folder_paths, list):
+            return
+
+        for folder_str in folder_paths:
+            try:
+                folder_path = Path(folder_str)
+            except Exception:
+                continue
+            if folder_path.exists() and folder_path.is_dir() and folder_path not in self.folders:
+                self.folders.append(folder_path)
+                self.folder_list.addItem(str(folder_path))
+
+    def _save_preset_folders(self):
+        """Save current dataset folders to local settings file."""
+        valid_folders = [str(folder) for folder in self.folders if folder.exists() and folder.is_dir()]
+        try:
+            with open(self.folder_presets_file, "w", encoding="utf-8") as f:
+                json.dump(valid_folders, f, indent=2)
+        except Exception:
+            # Ignore persistence errors to avoid interrupting the GUI workflow.
+            pass

@@ -145,8 +145,9 @@ class ProcessingOptionsWidget(QWidget):
         
         # Neuropixels LFP
         lfp_widget = ModalityOptionsWidget("Neuropixels LFP")
-        lfp_widget.add_float_field("Sampling Frequency", 250.0, "Hz")
-        lfp_widget.add_float_field("Cutoff frequency", 125.0, "Hz")
+        lfp_widget.add_float_field("fs_target", 250.0, "Hz")
+        lfp_widget.add_float_field("pass_frac", 0.9)
+        lfp_widget.add_float_field("order", 4.0)
         self.modality_widgets["Neuropixels LFP"] = lfp_widget
         self.container_layout.addWidget(lfp_widget)
         
@@ -210,8 +211,9 @@ class ProcessingOptionsWidget(QWidget):
             params.extract_lfp = lfp_widget.is_enabled()
             lfp_params = lfp_widget.get_params()
             try:
-                params.lfp_sampling_freq = float(lfp_params.get("Sampling Frequency", 250.0))
-                params.lfp_cutoff_freq = float(lfp_params.get("Cutoff frequency", 125.0))
+                params.lfp_fs_target = float(lfp_params.get("fs_target", 250.0))
+                params.lfp_pass_frac = float(lfp_params.get("pass_frac", 0.9))
+                params.lfp_order = int(float(lfp_params.get("order", 4.0)))
             except ValueError:
                 pass  # Keep defaults if invalid
         

@@ -36,12 +36,13 @@ class ExtractionParams:
     extract_ap: bool = False
     
     # Neuropixels LFP
-    extract_lfp: bool = False
-    lfp_sampling_freq: float = 250.0  # Hz
-    lfp_cutoff_freq: float = 125.0   # Hz
+    extract_lfp: bool = True
+    lfp_fs_target: float = 250.0  # Hz
+    lfp_pass_frac: float = 0.9
+    lfp_order: int = 4
     
     # Spike Sorting
-    extract_spikes: bool = True
+    extract_spikes: bool = False
     spike_rate_bin_size: float = 0.1  # s
 
     # NIDQ
@@ -58,7 +59,7 @@ class ExtractionParams:
     extract_pupil: bool = False
     
     # Probe Location
-    extract_probe_location: bool = True
+    extract_probe_location: bool = False
 
 
 class DataExtractor:
@@ -122,12 +123,98 @@ class DataExtractor:
     
     def _extract_lfp(self, source, output_folder: Path) -> Dict[str, Any]:
         """Extract Neuropixels LFP data"""
-        # TODO: Implement LFP extraction with filtering
-        print(f"Extracting LFP data from {source.path}")
+        try:
+            from scipy.signal import butter, filtfilt, resample_poly
+            from fractions import Fraction
+        except ImportError:
+            return {"status": "error", "message": "scipy.signal or fractions module not found"}
+        try:
+            from app.readutil.readSGLX import readMeta, SampRate, makeMemMapRaw
+        except ImportError:
+            return {"status": "error", "message": "readSGLX module not found"}
+
+        lfp_bin_file = getattr(source, "lfp_bin_file", None) or getattr(source, "bin_file", None)
+        lfp_meta_file = getattr(source, "lfp_meta_file", None)
+
+        if lfp_bin_file is None or not Path(lfp_bin_file).exists():
+            return {"status": "error", "message": "LFP .lf.bin file not found"}
+        if lfp_meta_file is None or not Path(lfp_meta_file).exists():
+            return {"status": "error", "message": "LFP .lf.meta file not found"}
+
+        try:
+            # Use the same SpikeGLX helpers as NIDQ path.
+            meta = readMeta(Path(lfp_bin_file))
+            n_chan = int(meta["nSavedChans"])
+            file_size_bytes = int(meta["fileSizeBytes"])
+            n_file_samp = int(file_size_bytes / (2 * n_chan))  # 2 bytes per int16 sample
+            fs_original = float(SampRate(meta))
+        except Exception as e:
+            return {"status": "error", "message": f"Failed to parse LFP metadata: {e}"}
+
+        fs_target = float(self.params.lfp_fs_target)
+        pass_frac = float(self.params.lfp_pass_frac)
+        order = int(self.params.lfp_order)
+
+        if fs_target <= 0:
+            return {"status": "error", "message": "fs_target must be > 0"}
+        if pass_frac <= 0 or pass_frac > 1:
+            return {"status": "error", "message": "pass_frac must be in (0, 1]"}
+        if order < 1:
+            return {"status": "error", "message": "order must be >= 1"}
+        if fs_target >= fs_original:
+            return {
+                "status": "error",
+                "message": f"fs_target ({fs_target} Hz) must be lower than source rate ({fs_original} Hz)"
+            }
+
+        raw_data = makeMemMapRaw(Path(lfp_bin_file), meta)
+        first_samp, last_samp = 0, n_file_samp - 1  # both ends inclusive
+
+        # Low-pass then downsample using a rational polyphase resampler.
+        cutoff_hz = 0.5 * fs_target * pass_frac
+        wn = cutoff_hz / (0.5 * fs_original)
+        wn = min(max(wn, 1e-6), 0.999999)
+        b, a = butter(order, wn, btype="low")
+
+        ratio = Fraction(fs_target / fs_original).limit_denominator(1000)
+
+        # Process channels in batches to balance speed and memory usage.
+        chunk_size = 30
+        trajectory_batch = np.empty((chunk_size, n_file_samp), dtype=np.float32)
+        downsampled = None
+        for start_idx in range(0, n_chan, chunk_size):
+            end_idx = min(start_idx + chunk_size, n_chan)
+            print(f"Extracting channel {start_idx} to {end_idx} of {n_chan}")
+            current_chunk = end_idx - start_idx
+
+            trajectory_batch[:current_chunk, :] = raw_data[start_idx:end_idx, first_samp:last_samp + 1]
+            filtered_chunk = filtfilt(b, a, trajectory_batch[:current_chunk, :], axis=1)
+            downsampled_chunk = resample_poly(
+                filtered_chunk,
+                up=ratio.numerator,
+                down=ratio.denominator,
+                axis=1,
+                padtype="line",
+            ).astype(np.float32, copy=False)
+
+            if downsampled is None:
+                downsampled = np.empty((n_chan, downsampled_chunk.shape[1]), dtype=np.float32)
+
+            downsampled[start_idx:end_idx, :] = downsampled_chunk
+
+        imec_name = source.path.name
+        imec_output_folder = output_folder / imec_name
+        imec_output_folder.mkdir(parents=True, exist_ok=True)
+        output_file = imec_output_folder / "lfp_downsample.npy"
+        print(output_file, downsampled.shape)
+        np.save(output_file, downsampled)
+
         return {
-            "status": "not_implemented",
-            "message": f"LFP extraction with sampling_freq={self.params.lfp_sampling_freq} Hz, "
-                      f"cutoff_freq={self.params.lfp_cutoff_freq} Hz not yet implemented"
+            "status": "success",
+            "message": (
+                f"LFP extracted from {imec_name}: {n_chan} channels, "
+                f"{fs_original:.2f} Hz -> {fs_target:.2f} Hz"
+            ),
         }
     
     def _extract_spikes(self, source, output_folder: Path) -> Dict[str, Any]:

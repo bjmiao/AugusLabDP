@@ -19,6 +19,8 @@ class DataSource:
     enabled: bool = True
     description: str = ""
     bin_file: Optional[Path] = None  # Path to the actual bin file if applicable
+    lfp_bin_file: Optional[Path] = None  # Path to .lf.bin (for Neuropixels LFP)
+    lfp_meta_file: Optional[Path] = None  # Path to .lf.meta (for Neuropixels LFP)
     label: Optional[str] = None  # Optional label (e.g., "sharptrack", "AP_histology")
     
     def __str__(self):
@@ -104,7 +106,9 @@ class DataDetector:
                         data_type="Neuropixels LFP",
                         path=item,
                         description=f"Local field potential data from {item.name}",
-                        bin_file=lfp_bin_file
+                        bin_file=lfp_bin_file,
+                        lfp_bin_file=lfp_bin_file,
+                        lfp_meta_file=lfp_meta_file
                     ))
                 
                 # Find Kilosort folders using pattern matching
