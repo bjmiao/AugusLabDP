@@ -240,6 +240,44 @@ def auguslab_manual_create_experimental_tag(
     
     return experimental_label_tag
 
+def get_anesthesia_period(
+    experimental_label_tag: Dict[str, Tuple[float, float]],
+    before_seconds: float = 120,
+    after_seconds: float = 600
+) -> Tuple[float, float]:
+    """
+        Get the anesthesia period time based on the experimental label tag.
+        Parameters
+        ----------
+        experimental_label_tag: Dict[str, Tuple[float, float]]
+            Dictionary containing the experimental label tag.
+        before_seconds: float, default 120
+            The time before the anesthesia period.
+        after_seconds: float, default 600
+            The time after the anesthesia period.
+        Returns
+        -------
+        Tuple[float, float]
+            The start and stop time of the anesthesia period.
+    """
+    unconscious_tags = ["Laser(20Hz)", 'Iso(5%)', 'Iso(1.5%)', 'Ketamine']
+    # TODO: here since the TTL button is pressed manually, 
+    # we need to manually set the time for unified anesthesia period
+    unconscious_duration = {
+        "Laser(20Hz)": 30,
+        "Iso(5%)": 60,
+        "Iso(1.5%)": 30 * 60,
+        "Ketamine": 90 * 60
+    }
+    anesthesia_period_start, anesthesia_period_stop = None, None
+    for tag, (start, stop) in experimental_label_tag.items():
+        if tag in unconscious_tags:
+            duration = unconscious_duration[tag]
+            anesthesia_period_start = start - before_seconds
+            anesthesia_period_stop = start + duration + after_seconds
+    return anesthesia_period_start, anesthesia_period_stop
+
+
 def auguslab_manual_correct_ttl_camera(
     nidq_ttl_camera: np.ndarray,
     nidq_sampling_rate: float,
@@ -471,7 +509,6 @@ def load_dataset(
             results['spike_matrix'] = all_spike_matrix
 
             # get the spike time and the clusters for the spikes
-<<<<<<< HEAD
             try:
                 spike_times_all = []
                 for probe_index, probe_path in enumerate(all_probes):
@@ -483,20 +520,6 @@ def load_dataset(
                 results['has_spike_times'] = True
             except FileNotFoundError as e:
                 results['has_spike_times'] = False
-
-            if results.get('has_cluster_region', True):
-                all_cluster_region = np.concatenate(all_cluster_region)
-                results['cluster_region'] = all_cluster_region
-                results['has_cluster_region'] = True
-=======
-            spike_times_all = []
-            for probe_index, probe_path in enumerate(all_probes):
-                probe_name = os.path.basename(probe_path)
-                spike_times = np.load(os.path.join(session_folder, probe_path, "spike_times.npy"))
-                spike_clusters = np.load(os.path.join(session_folder, probe_path, "spike_clusters.npy"))
-                spike_times_all.append((spike_times, spike_clusters))
-            results['spike_times'] = spike_times_all
->>>>>>> d0cf752c7f1f3566f5e6e91b6e98085542aa15de
         else:
             raise NotImplementedError
         # If TTL camera is presented, correct the spike matrix by the video time
