@@ -1,15 +1,7 @@
 """Simple preprocessing helpers for a channel-averaged LFP signal."""
 
 __ALL__ = ['average_channels', 'detrend_signal', 'notch_filter', 'bandpass', 'multitaper_spectrogram', 'multitaper_psd', 'plot_psd', 'plot_spectrogram']
-from __future__ import annotations
 from typing import Optional, Tuple
-import numpy as np
-
-from __future__ import annotations
-
-from math import gcd
-from typing import Optional, Tuple
-
 import numpy as np
 from scipy import signal
 
@@ -74,6 +66,39 @@ def _sliding_windows(x: np.ndarray, win: int, step: int) -> np.ndarray:
     # Explicit copy (not a view) keeps downstream code safe when MNE casts dtypes.
     idx = (np.arange(n_windows)[:, None] * step) + np.arange(win)[None, :]
     return x[idx]
+
+
+def preprocess_group(
+    data_uV: np.ndarray,
+    fs: float,
+    detrend: bool = True,
+    notch: Optional[float] = 60.0,
+    bandpass_hz: Optional[Tuple[float, float]] = None,
+) -> np.ndarray:
+    """Average across channels then apply optional detrend / notch / bandpass.
+
+    Parameters
+    ----------
+    data_uV
+        ``(n_chan, n_samples)`` array of microvolt-scaled LF data.
+    fs
+        Sample rate in Hz.
+    detrend
+        Linear-detrend the averaged signal.
+    notch
+        If not ``None``, apply an IIR notch at this frequency (Hz).
+    bandpass_hz
+        If not ``None``, apply a Butterworth bandpass ``(low, high)`` Hz.
+    """
+    x = average_channels(data_uV)
+    if detrend:
+        x = detrend_signal(x)
+    if notch is not None:
+        x = notch_filter(x, fs, freq=notch)
+    if bandpass_hz is not None:
+        low, high = bandpass_hz
+        x = bandpass(x, fs, low, high)
+    return x
 
 """Multitaper spectrogram built on ``mne.time_frequency.psd_array_multitaper``.
 

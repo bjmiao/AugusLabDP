@@ -380,7 +380,7 @@ def load_dataset(
         Dictionary mapping probe names to probe indices for region assignment.
         If None, defaults to empty dict.
     need_modules : List[str], optional
-        List of modules to load. Options: 'spike', 'video', 'ttl', 'eeg', 'ecg', 'pupil'
+        List of modules to load. Options: 'spike', 'cluster_region', 'video', 'ttl', 'eeg', 'ecg', 'pupil'
         If None, defaults to all modules.
     
     Returns
@@ -394,6 +394,7 @@ def load_dataset(
         - 'video_motSVD': np.ndarray, video motion SVD components
         - 'eeg': np.ndarray, EEG signal
         - 'ecg': np.ndarray, ECG signal
+        - 'lfp': np.ndarray, LFP signal
         - 'experimental_label_tag': Dict[str, Tuple[float, float]], experimental periods
         - 'cluster_region': np.ndarray, brain region for each cluster
         - 'has_*': bool flags indicating which modules were successfully loaded
@@ -403,7 +404,7 @@ def load_dataset(
     if probe_mapping is None:
         probe_mapping = {}
     if need_modules is None:
-        need_modules = ['spike', 'video', 'ttl', 'eeg', 'ecg', 'pupil']
+        need_modules = ['spike', 'region', 'video', 'ttl', 'eeg', 'ecg', 'pupil']
     
     session_folder = os.path.join(data_folder, session_name)
     results: Dict[str, Any] = {}
@@ -454,30 +455,16 @@ def load_dataset(
     # Load spiking matrix first, since it decides the shape of the matrix
     if 'spike' in need_modules:
         all_probes = set()
-        spike_timebin = 0.1 # in s
+        spike_timebin = 0.1 # TODO: hardcode for 100msin s
         if probe == 'all':
             for f in os.scandir(session_folder):
                 if f.is_dir():
                     all_probes.add(f.path)
             all_spike_matrix = []
-            all_cluster_region = []
             for probe_path in all_probes:
                 probe_name = os.path.basename(probe_path)
                 spike_matrix = np.load(os.path.join(session_folder, probe_path, "spike_rate_matrix_100ms.npy"))
                 all_spike_matrix.append(spike_matrix)
-
-                # try get the cluster region
-                templateDepths = np.load(os.path.join(session_folder, probe_path, "templateDepths.npy"))
-                probe_index, probe_depth = probe_mapping.get(probe_name, None)
-                if probe_index is not None:
-                    try:
-                        df_depth_table = pd.read_csv(os.path.join(session_folder, f"probe_{probe_index}_location.csv"))
-                        results['depth_table'] = df_depth_table
-                        cluster_region = get_cluster_region(templateDepths, df_depth_table, probe_depth)
-                        all_cluster_region.append(cluster_region)
-                    except Exception as e:
-                        print(e)
-                        results['has_cluster_region'] = False
             align_timestep = np.min([matrix.shape[1] for matrix in all_spike_matrix])
             all_spike_matrix = [matrix[:, :align_timestep] for matrix in all_spike_matrix]
             all_spike_matrix = np.concatenate(all_spike_matrix, axis = 0)
@@ -491,11 +478,6 @@ def load_dataset(
                 spike_clusters = np.load(os.path.join(session_folder, probe_path, "spike_clusters.npy"))
                 spike_times_all.append((spike_times, spike_clusters))
             results['spike_times'] = spike_times_all
-
-            if results.get('has_cluster_region', True):
-                all_cluster_region = np.concatenate(all_cluster_region)
-                results['cluster_region'] = all_cluster_region
-                results['has_cluster_region'] = True
         else:
             raise NotImplementedError
         # If TTL camera is presented, correct the spike matrix by the video time
@@ -506,7 +488,76 @@ def load_dataset(
         results['has_spike'] = True
     else:
         results['has_spike'] = False
-        results['has_cluster_region'] = False
+    
+    if 'lfp' in need_modules:
+        lfp_fs = 250.0 # TODO: hardcode for 250Hz
+        if probe == 'all':
+            all_probes = set()
+            for f in os.scandir(session_folder):
+                if f.is_dir():
+                    all_probes.add(f.path)
+            all_lfp = []
+            for probe_path in all_probes:
+                probe_name = os.path.basename(probe_path)
+                lfp = np.load(os.path.join(session_folder, probe_path, "lfp_downsample.npy"))
+                assert lfp.shape[0] == 385, f"lfp.shape[0] != 385 for {probe_path}"
+                lfp = lfp[:384, :] # last channel is SY0 signal, removed
+                all_lfp.append(lfp)
+            # Find the minimum number of timepoints (columns) across all lfp arrays
+            min_timepoints = min(lfp.shape[1] for lfp in all_lfp)
+            # Trim each lfp array to have this minimum length along axis 1
+            assert all(abs(lfp.shape[1] - min_timepoints) < 5 for lfp in all_lfp), \
+                f"One or more lfp arrays are more than 5 samples longer than min_timepoints: {[lfp.shape[1] for lfp in all_lfp]} vs min_timepoints={min_timepoints}"
+            all_lfp = [lfp[:, :min_timepoints] for lfp in all_lfp]
+            all_lfp = np.concatenate(all_lfp, axis = 0)
+            results['lfp'] = all_lfp
+            results['has_lfp'] = True
+            results['lfp_fs'] = lfp_fs
+        else:
+            results['has_lfp'] = False
+
+    if 'region' in need_modules:
+        if probe == 'all':
+            all_probes = set()
+            for f in os.scandir(session_folder):
+                if f.is_dir():
+                    all_probes.add(f.path)
+            all_cluster_region = []
+            all_channel_region = []
+            results['has_cluster_region'] = True
+            results['has_channel_region'] = True
+            for probe_path in all_probes:
+                probe_name = os.path.basename(probe_path)
+                # try get the cluster region
+                templateDepths = np.load(os.path.join(session_folder, probe_path, "templateDepths.npy"))
+                channelDepths = np.repeat(np.arange(0, 3821, 20), 2) # TODO: hardcode for 1.0
+       
+                probe_index, probe_depth = probe_mapping.get(probe_name, None)
+                if probe_index is not None:
+                    try:
+                        df_depth_table = pd.read_csv(os.path.join(session_folder, f"probe_{probe_index}_location.csv"))
+                        results['depth_table'] = df_depth_table
+                        cluster_region = get_cluster_region(templateDepths, df_depth_table, probe_depth)
+                        channel_region = get_cluster_region(channelDepths, df_depth_table, probe_depth)
+                        all_cluster_region.append(cluster_region)
+                        all_channel_region.append(channel_region)
+                    except Exception as e:
+                        print(e)
+                        results['has_cluster_region'] = False
+            if results.get('has_cluster_region', True) and len(all_cluster_region) > 0:
+                all_cluster_region = np.concatenate(all_cluster_region)
+                results['cluster_region'] = all_cluster_region
+                results['has_cluster_region'] = True
+            elif len(all_cluster_region) == 0:
+                results['has_cluster_region'] = False
+            if results.get('has_channel_region', True) and len(all_channel_region) > 0:
+                all_channel_region = np.concatenate(all_channel_region)
+                results['channel_region'] = all_channel_region
+                results['has_channel_region'] = True
+            elif len(all_channel_region) == 0:
+                results['has_channel_region'] = False
+        else:
+            raise NotImplementedError
     if 'video' in need_modules:
         try:
             video_motion = np.load(os.path.join(session_folder, "face_motion.npy"))
@@ -626,7 +677,8 @@ if __name__ == "__main__":
     from pathlib import Path
 
     # Here is an example of how to use the load_dataset function
-    data_folder = Path(r"C:\Users\bjmiao\The Augustine Lab Dropbox\Benjie Miao\Benjie_Jonny\SSA_Benjie\DPcachedata\\")
+    data_folder = Path(r'H:\The Augustine Lab Dropbox\Benjie Miao\Benjie_Jonny\SSA_Benjie\DPcachedata')
+    # data_folder = Path(r"C:\Users\bjmiao\The Augustine Lab Dropbox\Benjie Miao\Benjie_Jonny\SSA_Benjie\DPcachedata\\")
     session_info_path = data_folder / 'session_info.csv'
     df_session_info = pd.read_csv(session_info_path)
     print(df_session_info.head())
@@ -641,7 +693,11 @@ if __name__ == "__main__":
     df = df_probe_mapping[item['dataset']]
     df = df[df.session == item['session']]
     probe_mapping = {probe:(probenum, depth) for probe, probenum, depth in zip(df['probe'], df['probenum'], df['probe_depth'])}
-    results = load_dataset(data_folder / item['dataset'], item['session'], item['type'], probe='all', probe_mapping = probe_mapping)
+    results = load_dataset(
+        data_folder / item['dataset'], item['session'], item['type'],
+        probe='all', probe_mapping = probe_mapping,
+        need_modules=['cluster_region'])
     print(probe_mapping)
     print(list(results.keys()))
-    print(results['cluster_region'])
+    if 'cluster_region' in results:
+        print(results['cluster_region'])
