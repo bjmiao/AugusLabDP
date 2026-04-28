@@ -22,6 +22,7 @@ def run_in_all_sessions(
     datasets: Optional[List[str]] = None,
     session_info_path: Optional[Union[str, Path]] = None,
     dataset_filter: Optional[Iterable[str]] = None,
+    session_predicate: Optional[Callable[[pd.Series], bool]] = None,
     probe: Union[str, List[str]] = "all",
     need_modules: Optional[List[str]] = None,
     continue_on_error: bool = True,
@@ -53,6 +54,9 @@ def run_in_all_sessions(
         Override path to the session table. Default: ``data_folder / 'session_info.csv'``.
     dataset_filter
         If set, only rows whose ``dataset`` value is in this collection are run.
+    session_predicate
+        If set, only rows for which ``session_predicate(row)`` is True are processed.
+        Other rows are skipped without loading data (nothing is appended to the returned list).
     probe, need_modules
         Forwarded to :func:`readout_utils.load_dataset`.
     continue_on_error
@@ -89,6 +93,11 @@ def run_in_all_sessions(
         session_name = item["session"]
         session_type = item["type"]
         dataset = item["dataset"]
+
+        if session_predicate is not None and not session_predicate(item):
+            if verbose:
+                print(f"{session_name} skipped (session_predicate)")
+            continue
 
         if verbose:
             print(session_name)

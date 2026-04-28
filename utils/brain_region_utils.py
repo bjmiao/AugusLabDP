@@ -8,6 +8,7 @@ from typing import Dict, List, Optional, Tuple, Any
 import matplotlib.pyplot as plt
 import numpy as np
 from allensdk.core.reference_space_cache import ReferenceSpaceCache
+import pandas as pd
 
 # Allen Brain Atlas reference space configuration
 reference_space_key = os.path.join('annotation', 'ccf_2017')
@@ -286,7 +287,98 @@ def get_meta_region_by_target_list(
     # If not among the target list
     return 'other'
 
-def get_meta_region_IBL(cluster_region_all: np.ndarray) -> np.ndarray:
+def get_meta_region_coarse(
+    cluster_region_all: np.ndarray,
+) -> np.ndarray:
+    """
+    Map brain region acronyms to their coarse meta-regions.
+    First, get the region id path of the region.
+        If path has 'Isocortex' or 'OLF', goes to depth 6 of the tree.
+        If path has 'CA', goes to layer 8.
+        If path has 'CTXsp', goes to layer 5.
+        If path has 'DG', 'FC', or 'IG', goes to layer 7.
+        If path has 'RHP', goes to layer 6.
+        If path has 'CNU', goes to layer 3.
+        If path has 'HY' or 'TH', goes to layer 5.
+        If path has 'MB', goes to layer 4.
+        If path has 'HB', goes to layer 4.
+        If path has 'CB', goes to layer 3.
+        Otherwise, goes to layer 1.
+    If the region id path is shallower than the above, keep its region.
+
+    Parameters
+    ----------
+        cluster_region_all : np.ndarray
+        Array of brain region acronyms (e.g., ['VISp', 'CA1', 'TH']).
+    Returns
+    -------
+    np.ndarray
+        Array of meta-region names corresponding to each input region.
+        Returns 'outside_brain' for regions not in the brain.
+    """
+    meta_region_all = []
+    for region in cluster_region_all:
+        if region == 'outside_brain' or region is None or region == "":
+            meta_region_all.append('outside_brain')
+            continue
+        try:
+            # Get structure id path
+            structure = tree.get_structures_by_acronym([region])
+            if not structure:
+                meta_region_all.append('outside_brain')
+                continue
+            region_id_path = structure[0]['structure_id_path']
+        except Exception:
+            meta_region_all.append('outside_brain')
+            continue
+
+        # Get all IDs in the path except root (first entry is always 997 - 'root')
+        path_ids = region_id_path[1:]
+
+        # Find meta region by layer depth based on the rules
+        meta_region = None
+
+        structure_names = [tree.get_structures_by_id([rid])[0]['acronym'] for rid in path_ids]
+
+        if 'Isocortex' in structure_names or 'OLF' in structure_names:
+            depth = 6
+        elif 'CA' in structure_names:
+            depth = 8
+        elif 'DG' in structure_names or 'FC' in structure_names or 'IG' in structure_names:
+            depth = 7
+        elif 'CTXsp' in structure_names:
+            depth = 5
+        elif 'RHP' in structure_names:
+            depth = 6
+        elif 'CNU' in structure_names:
+            depth = 3
+        elif 'HY' in structure_names or 'TH' in structure_names:
+            depth = 5
+        elif 'MB' in structure_names:
+            depth = 4
+        elif 'HB' in structure_names:
+            depth = 4
+        elif 'CB' in structure_names:
+            depth = 3
+        else:
+            depth = 1
+
+        # Choose the layer, as deep as available (may be truncated)
+        if len(structure_names) >= depth:
+            meta_region = structure_names[depth-1]
+        elif structure_names:
+            meta_region = structure_names[-1]
+        else:
+            meta_region = 'outside_brain'
+        meta_region_all.append(meta_region)
+    return np.array(meta_region_all)
+
+
+
+def get_meta_region_IBL(
+    cluster_region_all: np.ndarray,
+    region_info_path : str = r"E:\Projects\SSA\AugusLabDP\utils\region_info.csv"
+) -> np.ndarray:
     """
     Map brain region acronyms to their meta-regions.
     
@@ -297,6 +389,9 @@ def get_meta_region_IBL(cluster_region_all: np.ndarray) -> np.ndarray:
     ----------
     cluster_region_all : np.ndarray
         Array of brain region acronyms (e.g., ['VISp', 'CA1', 'TH']).
+    region_info_path : str
+        Path to the region info CSV file.
+        DataFrame containing region info, should have at least the 'Beryl' column.
     
     Returns
     -------
@@ -304,9 +399,7 @@ def get_meta_region_IBL(cluster_region_all: np.ndarray) -> np.ndarray:
         Array of meta-region names corresponding to each input region.
         Returns 'outside_brain' for regions not in the brain.
     """
-    import pandas as pd
-    region_info = r"E:\Projects\SSA\AugusLabDP\utils\region_info.csv"
-    region_info = pd.read_csv(region_info)
+    region_info = pd.read_csv(region_info_path)
     bottomline_meta_region = ['Isocortex', 'OLF', 'HPF', 'CNU', 'CTXsp', 'TH', 'HY', 'MB', 'HB', 'fiber tracts', 'VS']
     meta_region_all = []
     for region in cluster_region_all:

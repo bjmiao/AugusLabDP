@@ -63,6 +63,58 @@ def create_colormap(time_periods: List[Tuple[float, float]]) -> LinearSegmentedC
     return cmap
 
 
+def plot_raster_rastermap(spike_matrix: np.ndarray, ax: Optional[Any] = None, n_components: int = 1, **rastermap_kwargs):
+    """
+    Plot the rastermap-sorted raster plot of a spike matrix.
+
+    Parameters
+    ----------
+    spike_matrix : np.ndarray
+        2D array with shape (n_timepoints, n_neurons). Each entry is spikes/bin.
+    ax : Optional[Any], default None
+        Matplotlib axis to plot into. If None, a new figure/ax is created.
+    n_components : int, default 1
+        Number of rastermap components to use for sorting.
+    **rastermap_kwargs:
+        Additional keyword arguments passed to Rastermap.
+
+    Returns
+    -------
+    Tuple[matplotlib.figure.Figure, matplotlib.axes.Axes]
+        Figure and axis containing the rasterplot.
+    """
+    try:
+        from rastermap import Rastermap
+    except ImportError:
+        raise ImportError("You need to install rastermap to use this function: pip install rastermap")
+    import matplotlib.pyplot as plt
+
+    # Fit Rastermap
+    model = Rastermap(n_PCs=200, n_clusters=100, 
+                    locality=0.75, time_lag_window=5).fit(spike_matrix.T)
+    y = model.embedding # neurons x 1
+    isort = model.isort
+    # visualize binning over neurons
+    X_embedding = model.X_embedding
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(8, 6))
+    else:
+        fig = ax.figure
+
+    im = ax.imshow(
+        X_embedding,
+        interpolation='nearest',
+        vmin = 0,
+        vmax = 3,
+        cmap='gray_r'
+    )
+    ax.set_ylabel('Neuron (sorted)')
+    ax.set_xlabel('Time')
+    fig.colorbar(im, ax=ax, label='Spike count')
+    return fig, ax
+
+
 def plot_overall(
     spikes_matrix_all: np.ndarray,
     ttl_button: np.ndarray,
