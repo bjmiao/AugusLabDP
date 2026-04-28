@@ -484,13 +484,17 @@ def load_dataset(
             results['spike_matrix'] = all_spike_matrix
 
             # get the spike time and the clusters for the spikes
-            spike_times_all = []
-            for probe_index, probe_path in enumerate(all_probes):
-                probe_name = os.path.basename(probe_path)
-                spike_times = np.load(os.path.join(session_folder, probe_path, "spike_times.npy"))
-                spike_clusters = np.load(os.path.join(session_folder, probe_path, "spike_clusters.npy"))
-                spike_times_all.append((spike_times, spike_clusters))
-            results['spike_times'] = spike_times_all
+            try:
+                spike_times_all = []
+                for probe_index, probe_path in enumerate(all_probes):
+                    probe_name = os.path.basename(probe_path)
+                    spike_times = np.load(os.path.join(session_folder, probe_path, "spike_times.npy"))
+                    spike_clusters = np.load(os.path.join(session_folder, probe_path, "spike_clusters.npy"))
+                    spike_times_all.append((spike_times, spike_clusters))
+                results['spike_times'] = spike_times_all
+                results['has_spike_times'] = True
+            except FileNotFoundError as e:
+                results['has_spike_times'] = False
 
             if results.get('has_cluster_region', True):
                 all_cluster_region = np.concatenate(all_cluster_region)
