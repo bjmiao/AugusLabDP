@@ -4,3 +4,7 @@ scikit-learn~=1.4.0
 pyqtgraph~=0.13.0
 allensdk~=2.16.0
 mne~=1.6.0
+numpy~=1.23.0
+scipy~=1.10.0
+matplotlib~=3.8.0
+pandas~=1.5.3
