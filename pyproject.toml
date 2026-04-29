@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "auguslab-dp"
+name = "AugusLabDP"
 version = "0.1.0"
 description = "Dashboard software for Neuropixels data preprocessing"
 readme = "README.md"
@@ -25,10 +25,10 @@ classifiers = [
 
 dependencies = [
     "PyQt6~=6.6.0",
-    "numpy~=1.26.0",
-    "scipy~=1.11.0",
-    "pandas~=2.1.0",
+    "numpy~=1.23.0",
+    "scipy~=1.10.0",
     "matplotlib~=3.8.0",
+    "pandas~=1.5.3",
 ]
 
 [project.optional-dependencies]
@@ -38,6 +38,10 @@ utils = [
     "pyqtgraph~=0.13.0",
     "allensdk~=2.16.0",
     "mne~=1.6.0",
+    "numpy~=1.23.0",
+    "scipy~=1.10.0",
+    "matplotlib~=3.8.0",
+    "pandas~=1.5.3",
 ]
 dev = [
     "pytest>=7.0.0",
@@ -47,7 +51,10 @@ dev = [
 ]
 
 [tool.setuptools]
-packages = ["app"]
+packages = ["AugusLabDP.utils"]
+
+[tool.setuptools.package-dir]
+"AugusLabDP.utils" = "utils"
 
 [tool.black]
 line-length = 100
