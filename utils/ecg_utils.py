@@ -4,7 +4,7 @@ from sklearn.mixture import GaussianMixture
 from scipy.ndimage import gaussian_filter
 import matplotlib.pyplot as plt
 
-__all__ = ['find_r_peaks', 'get_heart_rate', 'plot_ecg_with_r_peaks']
+__all__ = ['find_r_peaks', 'get_heart_rate', 'plot_ecg_with_r_peaks', 'ecg_to_bpm']
 
 def find_r_peaks(ecg: np.ndarray, sampling_rate: float, max_bpm = 900) -> np.ndarray:
     """
@@ -84,8 +84,11 @@ def plot_ecg_with_r_peaks(ecg: np.ndarray, r_peaks_in_seconds: np.ndarray,
     ax.set_xlim(start_time, stop_time)
     return fig, ax
 
-def ecg_to_bpm(ecg, sampling_rate):
-    r_peaks_in_seconds, threshold = find_r_peaks(ecg, sampling_rate)
+def ecg_to_bpm(ecg: np.ndarray, sampling_rate: float) -> np.ndarray:
+    """
+    Convert the ECG signal to BPM.
+    """
+    r_peaks_in_seconds, _ = find_r_peaks(ecg, sampling_rate) # threshold is not used
     total_time = len(ecg) / sampling_rate
     bpm = get_heart_rate(r_peaks_in_seconds, total_time, timebin = 1, temporal_smoothing_window = 3)
     return bpm

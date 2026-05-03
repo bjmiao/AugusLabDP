@@ -655,6 +655,7 @@ def load_dataset(
         results['has_pupil'] = False
     return results
 
+
 # Find the projection point on the line fit by brain_entrance and brain_exit
 def find_projection_point(brain_entrance, brain_exit, point):
     distance = np.dot(brain_exit - brain_entrance, point - brain_entrance) / np.dot(brain_exit - brain_entrance, brain_exit - brain_entrance)
