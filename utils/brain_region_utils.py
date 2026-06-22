@@ -255,7 +255,7 @@ TARGET_REGION_LIST: List[str] =  ["TH", 'HY', 'HPF', 'BS', 'CTX', 'CNU']
 TARGET_REGION_LIST = sorted(TARGET_REGION_LIST, key = lambda x: len(tree.get_structures_by_acronym([x])[0]['structure_id_path'])) 
 
 def get_meta_region_by_target_list(
-    region: str,
+    cluster_region_all: np.ndarray,
     target_region_list: List[str] = None
 ) -> str:
     """
@@ -266,7 +266,7 @@ def get_meta_region_by_target_list(
     
     Parameters
     ----------
-    region : str
+    cluster_region_all : np.ndarray
         Brain region acronym to classify.
     target_region_list : List[str], optional
         List of target region acronyms. If None, uses TARGET_REGION_LIST.
@@ -274,18 +274,26 @@ def get_meta_region_by_target_list(
     Returns
     -------
     str
-        Target region acronym if found, otherwise 'other'.
+        Array of target region acronyms if found, otherwise 'other'.
     """
+
     if target_region_list is None:
         target_region_list = TARGET_REGION_LIST
     
-    path = tree.get_structures_by_acronym([region])[0]['structure_id_path']
-    for target_region in target_region_list:
-        region_id = tree.get_structures_by_acronym([target_region])[0]['id']
-        if region_id in path:
-            return target_region
-    # If not among the target list
-    return 'other'
+    meta_region_all = []
+    for region in cluster_region_all:
+        path = tree.get_structures_by_acronym([region])[0]['structure_id_path']
+        meta_region = None
+        for target_region in target_region_list:
+            region_id = tree.get_structures_by_acronym([target_region])[0]['id']
+            if region_id in path:
+                meta_region = target_region
+                break
+        # if not found in the target list, append a 'other'
+        if meta_region is None:
+            meta_region = 'other'
+        meta_region_all.append(meta_region)
+    return np.array(meta_region_all)
 
 def get_meta_region_coarse(
     cluster_region_all: np.ndarray,

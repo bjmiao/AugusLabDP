@@ -8,3 +8,4 @@ numpy~=1.23.0
 scipy~=1.10.0
 matplotlib~=3.8.0
 pandas~=1.5.3
+circle-fit~=0.2.1
