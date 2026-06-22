@@ -32,13 +32,13 @@ def get_pupil_size(df_pupil, window_size = 1, frame_rate = 30, max_nan_time = 3)
         point_coordinates = np.array([arrs['pupiltop'][timepoint, :], arrs['pupilbot'][timepoint, :], arrs['pupilleft'][timepoint, :], arrs['pupilright'][timepoint, :]])
         timepoint_likelihood = likelihoods[timepoint, :]
         # if all likelihoods are above 0.85, then use the circle fit
-        confident_pupil_points = timepoint_likelihood[timepoint_likelihood > 0.85]
+        confident_pupil_points = timepoint_likelihood[timepoint_likelihood > 0.9]
         if len(confident_pupil_points) == 4:
             xc, yc, r, sigma = taubinSVD(point_coordinates)
             # plot_circle(point_coordinates, xc, yc, r)
             r_all.append(r)
         elif len(confident_pupil_points) == 3:
-            point_coordinates = point_coordinates[timepoint_likelihood > 0.85]
+            point_coordinates = point_coordinates[timepoint_likelihood > 0.9]
             xc, yc, r, sigma = taubinSVD(point_coordinates)
             # plot_circle(point_coordinates, xc, yc, r)
             r_all.append(r)
@@ -66,6 +66,7 @@ def get_pupil_size(df_pupil, window_size = 1, frame_rate = 30, max_nan_time = 3)
                 end = i  # arr[start:end] are NaNs; arr[start-1] and arr[end] are non-NaN if within bounds
 
                 run_length = end - start
+                print(f"run_length: {run_length} ({start} to {end})")
 
                 if run_length < max_run:
                     left_val = arr[start - 1] if start > 0 else arr[end] if end < n else np.nan
@@ -84,7 +85,7 @@ def get_pupil_size(df_pupil, window_size = 1, frame_rate = 30, max_nan_time = 3)
             else:
                 i += 1
     # max_run = max(int(max_nan_time / window_size), 1)
-    max_run = 100 # TODO: har code, fill all NANs
+    max_run = 300 # TODO: har code, fill all NANs
     fill_short_nan_runs_linear(mean_pupil_size, max_run = max_run)
 
     if np.any(np.isnan(mean_pupil_size)):

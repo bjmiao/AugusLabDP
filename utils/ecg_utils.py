@@ -84,13 +84,13 @@ def plot_ecg_with_r_peaks(ecg: np.ndarray, r_peaks_in_seconds: np.ndarray,
     ax.set_xlim(start_time, stop_time)
     return fig, ax
 
-def ecg_to_bpm(ecg: np.ndarray, sampling_rate: float) -> np.ndarray:
+def ecg_to_bpm(ecg: np.ndarray, sampling_rate: float, timebin: float = 1) -> np.ndarray:
     """
     Convert the ECG signal to BPM.
     """
     r_peaks_in_seconds, _ = find_r_peaks(ecg, sampling_rate) # threshold is not used
     total_time = len(ecg) / sampling_rate
-    bpm = get_heart_rate(r_peaks_in_seconds, total_time, timebin = 1, temporal_smoothing_window = 3)
+    bpm = get_heart_rate(r_peaks_in_seconds, total_time, timebin = timebin, temporal_smoothing_window = 3)
     return bpm
     
 if __name__ == '__main__':
