@@ -516,7 +516,15 @@ def load_dataset(
                     spike_times = np.load(os.path.join(session_folder, probe_path, "spike_times.npy"))
                     spike_clusters = np.load(os.path.join(session_folder, probe_path, "spike_clusters.npy"))
                     spike_times_all.append((spike_times, spike_clusters))
-                results['spike_times'] = spike_times_all
+                # aggregate the spike times and clusters
+                spike_times_aggregated = []
+                spike_clusters_aggregated = []
+                now_neuron_index = 0
+                for probe_index, (spike_times, spike_clusters) in enumerate(spike_times_all):
+                    spike_times_aggregated.extend(spike_times)
+                    spike_clusters_aggregated.extend(spike_clusters + now_neuron_index)
+                    now_neuron_index += spike_clusters.max() + 1
+                results['spike_times'] = np.array(spike_times_aggregated), np.array(spike_clusters_aggregated)
                 results['has_spike_times'] = True
             except FileNotFoundError as e:
                 results['has_spike_times'] = False
