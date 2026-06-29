@@ -2,7 +2,6 @@
 seaborn
 scikit-learn
 pyqtgraph
-braian
 mne
 numpy
 scipy

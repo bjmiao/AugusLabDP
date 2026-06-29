@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
 
+__all__ = ['get_pupil_size']
+
 def get_pupil_size(df_pupil, window_size = 1, frame_rate = 30, max_nan_time = 3):
     """ 
         From the DLC output, in the format of a dataframe, get the pupil size

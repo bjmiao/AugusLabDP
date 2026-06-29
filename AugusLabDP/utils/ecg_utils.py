@@ -4,7 +4,7 @@ from sklearn.mixture import GaussianMixture
 from scipy.ndimage import gaussian_filter
 import matplotlib.pyplot as plt
 
-__all__ = ['find_r_peaks', 'get_heart_rate', 'plot_ecg_with_r_peaks', 'ecg_to_bpm']
+__all__ = ['find_r_peaks', 'get_heart_rate', 'get_heart_rate_variability', 'plot_ecg_with_r_peaks', 'ecg_to_bpm']
 
 def find_r_peaks(ecg: np.ndarray, sampling_rate: float, max_bpm = 900) -> np.ndarray:
     """

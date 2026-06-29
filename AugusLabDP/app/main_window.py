@@ -35,7 +35,7 @@ class MainWindow(QMainWindow):
         self.folders: list[Path] = []
         self.current_folder: Path = None
         self.detector: DataDetector = None
-        self.repo_root = Path(__file__).parent.parent
+        self.repo_root = Path(__file__).parent.parent.parent
         self.folder_presets_file = self.repo_root / ".dataset_folders.json"
         
         # Central widget

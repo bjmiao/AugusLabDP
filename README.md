@@ -20,13 +20,18 @@ A Python Qt-based dashboard application for Neuropixels data preprocessing. The 
 
 - Python 3.9 or higher (3.11 recommended for the `utils` extra)
 
-### Dashboard app (`pip install .`)
+### Base package (`pip install .`)
 
-- PyQt6
 - NumPy
 - SciPy
 - pandas
 - matplotlib
+
+### Dashboard app (`pip install ".[app]"`)
+
+Adds the GUI dependency:
+
+- PyQt6
 
 ### Analysis utilities (`pip install ".[utils]"`)
 
@@ -34,8 +39,6 @@ Adds the optional dependencies used by modules under `AugusLabDP/utils/`:
 
 - seaborn
 - scikit-learn
-- pyqtgraph
-- braian
 - mne
 
 ## Installation
@@ -56,22 +59,34 @@ conda activate AugusLabDP-py311
 
 3. Install the package:
 
-**Dashboard app only** (GUI + core scientific dependencies):
+**Base package only** (shared scientific dependencies and importable packages):
 
 ```bash
 pip install .
 ```
 
-**Analysis / notebook utilities** (adds `utils` optional dependencies on top of the base install):
+**Dashboard app** (base package + PyQt6 GUI dependency):
+
+```bash
+pip install ".[app]"
+```
+
+**Analysis / notebook utilities** (base package + `utils` optional dependencies):
 
 ```bash
 pip install ".[utils]"
 ```
 
+**Dashboard app + utilities:**
+
+```bash
+pip install ".[app,utils]"
+```
+
 **Editable install for development:**
 
 ```bash
-pip install -e ".[utils]"
+pip install -e ".[app,utils]"
 ```
 
 **Developer tools** (formatting, linting, tests):
@@ -80,24 +95,24 @@ pip install -e ".[utils]"
 pip install -e ".[dev]"
 ```
 
-On Windows PowerShell, keep the quotes around `".[utils]"`.
+On Windows PowerShell, keep the quotes around extras such as `".[app]"`, `".[utils]"`, or `".[app,utils]"`.
 
 ### Alternative: requirements files
 
 You can still install dependencies directly from the plain requirements files:
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements-apps.txt
 pip install -r requirements-utils.txt
 ```
 
-For normal use, `pip install .` / `pip install ".[utils]"` is preferred because it also registers the Python packages for import.
+For normal use, `pip install .` / `pip install ".[app]"` / `pip install ".[utils]"` is preferred because it also registers the Python packages for import.
 
 ## Usage
 
 ### Run the dashboard
 
-After `pip install .`, launch the GUI with:
+After `pip install ".[app]"`, launch the GUI with:
 
 ```bash
 auguslabdp
@@ -127,8 +142,6 @@ from AugusLabDP.utils.brain_region_utils import get_meta_region_coarse
 from AugusLabDP.utils.eeg_utils import multitaper_spectrogram
 ```
 
-See `AugusLabDP/utils/example_usage.ipynb` for a full workflow example.
-
 The GUI code remains importable as the top-level `app` package (for example, `from app.main_window import MainWindow`) so existing in-repo imports continue to work after installation.
 
 ## Project Structure
@@ -137,7 +150,8 @@ The GUI code remains importable as the top-level `app` package (for example, `fr
 AugusLabDP/                     # Repository root
 ├── main.py                     # Local entry point (source checkout)
 ├── pyproject.toml              # Package metadata and optional extras
-├── requirements.txt            # Core app dependencies (alternative install)
+├── requirements.txt            # Base scientific dependencies (alternative install)
+├── requirements-apps.txt       # Dashboard GUI dependencies (alternative install)
 ├── requirements-utils.txt      # Utils dependencies (alternative install)
 ├── AugusLabDP/                 # Python package root
 │   ├── __init__.py
