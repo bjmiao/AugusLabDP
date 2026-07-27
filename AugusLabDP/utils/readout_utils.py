@@ -551,8 +551,10 @@ def load_dataset(
                 if f.is_dir():
                     all_probes.add(f.path)
             all_probes = sorted(all_probes, key = lambda x: os.path.basename(x))
+        else:
+            raise NotImplementedError("Probe is not 'all', not implemented")
 
-            # Get the spike matrix
+        try: # get spike matrix
             all_spike_matrix = []
             neuron_per_probe = []
             for probe_path in all_probes:
@@ -564,51 +566,57 @@ def load_dataset(
             all_spike_matrix = np.concatenate(all_spike_matrix, axis = 0)
             results['spike_matrix'] = all_spike_matrix
             results['num_neurons_per_probe'] = np.array(neuron_per_probe)
+            # If TTL camera is presented, correct the spike matrix and spike times by the video time
+            if results['has_ttl_camera']:
+                session_start_index = int(results['session_start_time'] / spike_timebin)
+                session_stop_index = int(results['session_stop_time']  / spike_timebin)
+                results['spike_matrix'] = results['spike_matrix'][:, session_start_index:session_stop_index].T
+            results['has_spike'] = True
+        except Exception as e:
+            results['has_spike'] = False
 
-            # Get the cluster info dataframe
-            try:
-                all_cluster_info = []
-                for probe_index, probe_path in enumerate(all_probes):
-                    cluster_info = pd.read_csv(os.path.join(session_folder, probe_path, "df_cluster_info.csv"))
-                    cluster_info['probe_name'] = os.path.basename(probe_path)
-                    cluster_info['probe_index'] = probe_index
-                    all_cluster_info.append(cluster_info)
-                all_cluster_info = pd.concat(all_cluster_info)
-                all_cluster_info = all_cluster_info.reset_index(drop=True)           
-                results['cluster_info'] = all_cluster_info
-                results['has_cluster_info'] = True
-            except FileNotFoundError as e:
-                results['has_cluster_info'] = False
+        # get the spike time and the clusters for the spikes
+        try:
+            spike_times_all = []
+            for probe_index, probe_path in enumerate(all_probes):
+                spike_times = np.load(os.path.join(session_folder, probe_path, "spike_times.npy"))
+                spike_clusters = np.load(os.path.join(session_folder, probe_path, "spike_clusters.npy"))
+                spike_times_all.append((spike_times, spike_clusters))
+            # aggregate the spike times and clusters
+            spike_times_aggregated = []
+            spike_clusters_aggregated = []
+            now_neuron_index = 0
+            for probe_index, (spike_times, spike_clusters) in enumerate(spike_times_all):
+                spike_times_aggregated.extend(spike_times)
+                spike_clusters_aggregated.extend(spike_clusters + now_neuron_index)
+                now_neuron_index += spike_clusters.max() + 1
+            spike_times_aggregated = np.array(spike_times_aggregated)
+            spike_clusters_aggregated = np.array(spike_clusters_aggregated)
+            if results['has_ttl_camera']:
+                spike_times_aggregated = spike_times_aggregated - results['session_start_time']
+                spike_times_aggregated_index = np.where((spike_times_aggregated >= 0) & (spike_times_aggregated < results['session_duration']))[0]
+                spike_times_aggregated = spike_times_aggregated[spike_times_aggregated_index]
+                spike_clusters_aggregated = spike_clusters_aggregated[spike_times_aggregated_index]
+            results['spike_times'] = (spike_times_aggregated, spike_clusters_aggregated)
+            results['has_spike_times'] = True
+        except FileNotFoundError as e:
+            results['has_spike_times'] = False
 
-            # get the spike time and the clusters for the spikes
-            try:
-                spike_times_all = []
-                for probe_index, probe_path in enumerate(all_probes):
-                    spike_times = np.load(os.path.join(session_folder, probe_path, "spike_times.npy"))
-                    spike_clusters = np.load(os.path.join(session_folder, probe_path, "spike_clusters.npy"))
-                    spike_times_all.append((spike_times, spike_clusters))
-                # aggregate the spike times and clusters
-                spike_times_aggregated = []
-                spike_clusters_aggregated = []
-                now_neuron_index = 0
-                for probe_index, (spike_times, spike_clusters) in enumerate(spike_times_all):
-                    spike_times_aggregated.extend(spike_times)
-                    spike_clusters_aggregated.extend(spike_clusters + now_neuron_index)
-                    now_neuron_index += spike_clusters.max() + 1
-                results['spike_times'] = np.array(spike_times_aggregated), np.array(spike_clusters_aggregated)
-                results['has_spike_times'] = True
-            except FileNotFoundError as e:
-                results['has_spike_times'] = False
-        else:
-            raise NotImplementedError
-        # If TTL camera is presented, correct the spike matrix by the video time
-        if results['has_ttl_camera']:
-            session_start_index = int(results['session_start_time'] / spike_timebin)
-            session_stop_index = int(results['session_stop_time']  / spike_timebin)
-            results['spike_matrix'] = results['spike_matrix'][:, session_start_index:session_stop_index].T
-        results['has_spike'] = True
-    else:
-        results['has_spike'] = False
+        # get the cluster info dataframe
+        try: 
+            all_cluster_info = []
+            for probe_index, probe_path in enumerate(all_probes):
+                cluster_info = pd.read_csv(os.path.join(session_folder, probe_path, "df_cluster_info.csv"))
+                cluster_info['probe_name'] = os.path.basename(probe_path)
+                cluster_info['probe_index'] = probe_index
+                all_cluster_info.append(cluster_info)
+            all_cluster_info = pd.concat(all_cluster_info)
+            all_cluster_info = all_cluster_info.reset_index(drop=True)           
+            results['cluster_info'] = all_cluster_info
+            results['has_cluster_info'] = True
+        except FileNotFoundError as e:
+            results['has_cluster_info'] = False
+
     
     if 'lfp' in need_modules:
         lfp_fs = 250.0 # TODO: hardcode for 250Hz
