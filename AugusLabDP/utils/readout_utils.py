@@ -91,8 +91,81 @@ def auguslab_manual_correct_ttl_button(
         time_mask = 5 # in seconds, first button up is failed ketamine IP injection so remove
         nidq_ttl_button[first_button_up:first_button_up + int(time_mask * nidq_sampling_rate)] = 0
         # No correction needed for test2
+    elif session_name == '69N_D1_mPFC_Insular_g0': # the last TTL pulse is excessary, remove
+        niSampRate = 12500 # hardcoded for these sessions
+        nidq_ttl_button[3250 * niSampRate:] = 0 # after 3250 seconds, everything to be zero
+    elif session_name in ['NPY2R_Ai32_18N_Day2_g0', 'NPY2R_Ai32_32N_Day1_g0', 'NPY2R_Ai32_32N_Day2_g0']:
+        # lack a PHONY laser, copy 600-700 seconds to 300-400 seconds
+        niSampRate = 12500 # hardcoded for these sessions
+        nidq_ttl_button[300 * niSampRate:400 * niSampRate] = nidq_ttl_button[600 * niSampRate:700 * niSampRate]
+    elif session_name == 'NPY2R_Ai32_18N_Day1_g0':
+        niSampRate = 12500 # hardcoded for these sessions
+        last_high = np.where(nidq_ttl_button == 1)[0][-1]
+        first_high = np.where(nidq_ttl_button[last_high - 62 * niSampRate:last_high] == 1)[0][0]
+        first_high = first_high + last_high - 62 * niSampRate
+        print(first_high/niSampRate, last_high/niSampRate)
     else:
         pass
+
+def auguslab_manual_correct_ttl_video(
+    video_motion: np.ndarray,
+    video_motSVD: np.ndarray,
+    camera_sampling_rate: float,
+    session_name: str,
+    session_type: str
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Manually correct video signal for specific sessions.
+    """
+    if session_name == '19T_5452413A_mPFC_CA1_Day1_g0':
+        # the last TTL pulse is excessary, remove
+        # remove the ecessive 8 seconds from the top
+        video_motion = video_motion[int(8*camera_sampling_rate):]
+        video_motSVD = video_motSVD[int(8*camera_sampling_rate):]
+    if session_name == 'NPY2R_Ai32_18N_Day1_g0':
+        # the video needs to be corrected by the laser in the video
+        video_motion = video_motion[: int(-49.5*camera_sampling_rate)]
+        video_motSVD = video_motSVD[: int(-49.5*camera_sampling_rate)]
+        # the TTL is only stored for the first 3433.7 seconds
+        # video_motion = video_motion[:int(3433.7 * camera_sampling_rate)]
+        # video_motSVD = video_motSVD[:int(3433.7 * camera_sampling_rate)]
+    return video_motion, video_motSVD
+
+def auguslab_manual_correct_ttl_camera(
+    nidq_ttl_camera: np.ndarray,
+    nidq_sampling_rate: float,
+    session_name: str,
+    session_type: str
+) -> None:
+    """
+    Manually correct TTL camera signal for specific sessions.
+    
+    For certain sessions, this function corrects the TTL camera signal
+    due to signal loss or artifacts. Modifies the array in-place.
+    
+    Parameters
+    ----------
+    nidq_ttl_camera : np.ndarray
+        TTL camera signal array to be corrected (modified in-place).
+    nidq_sampling_rate : float
+        Sampling rate of the NIDQ system (Hz).
+    session_name : str
+        Name of the experimental session.
+    session_type : str
+        Type of session.
+    """
+    if session_name == '12T_5378529C_Insular_PVH_5p_day2_g0':
+        # This session, the camera signal before 153 seconds are lost
+        # therefore we remove TTL camera signal before 153 seconds
+        nidq_ttl_camera[0:int(153 * nidq_sampling_rate)] = 0
+    elif session_name == 'NPY2R_Ai32_18N_Day1_g0':
+        # the camera signal was late for 9 second
+        # so we fill the camera the 15 to 24 seconds
+        nidq_ttl_camera[int(23.8*nidq_sampling_rate): int(31.8*nidq_sampling_rate)] = 0
+    elif session_name == 'test2':
+        # no correction
+        pass
+
 
 def auguslab_manual_create_experimental_tag(
     results: Dict[str, Any],
@@ -184,8 +257,8 @@ def auguslab_manual_create_experimental_tag(
         ketamine_onset = nidq_ttl_button_up_time[0]
         experimental_label_tag = {
             'Baseline': (0, ketamine_onset),
-            'Ketamine': (ketamine_onset, ketamine_onset + 120),
-            'Recover': (ketamine_onset + 120, session_duration)
+            'Ketamine': (ketamine_onset, ketamine_onset + 70 * 60),
+            'Recover': (ketamine_onset + 70 * 60, session_duration)
         }
     elif session_type == 'iso_day1' or session_type == 'iso_day2':
         # Isoflurane protocol: single TTL square wave
@@ -276,37 +349,6 @@ def get_anesthesia_period(
             anesthesia_period_start = start - before_seconds
             anesthesia_period_stop = start + duration + after_seconds
     return anesthesia_period_start, anesthesia_period_stop
-
-
-def auguslab_manual_correct_ttl_camera(
-    nidq_ttl_camera: np.ndarray,
-    nidq_sampling_rate: float,
-    session_name: str,
-    session_type: str
-) -> None:
-    """
-    Manually correct TTL camera signal for specific sessions.
-    
-    For certain sessions, this function corrects the TTL camera signal
-    due to signal loss or artifacts. Modifies the array in-place.
-    
-    Parameters
-    ----------
-    nidq_ttl_camera : np.ndarray
-        TTL camera signal array to be corrected (modified in-place).
-    nidq_sampling_rate : float
-        Sampling rate of the NIDQ system (Hz).
-    session_name : str
-        Name of the experimental session.
-    session_type : str
-        Type of session.
-    """
-    if session_name == 'test':
-        # No correction needed for test session
-        pass
-    elif session_name == 'test2':
-        # No correction needed for test2 session
-        pass
 
 
 def interpolate_array(arr: np.ndarray, target_size: int) -> np.ndarray:
@@ -419,7 +461,7 @@ def load_dataset(
         If None, defaults to empty dict.
     need_modules : List[str], optional
         List of modules to load. Options: 'spike', 'cluster_region', 'video', 'ttl', 'eeg', 'ecg', 'pupil'
-        If None, defaults to all modules.
+        If None, defaults to all modules except 'lfp' (this is very large and not needed for most analyses).
     
     Returns
     -------
@@ -461,9 +503,17 @@ def load_dataset(
             # Go through a lab-specific manual correction for camera TTL signal due to signal loss in some sessions
             auguslab_manual_correct_ttl_camera(nidq_ttl_camera, float(nidq_meta['niSampRate']), session_name, session_type)
             results['ttl_camera'] = nidq_ttl_camera
-            nidq_ttl_camera_high = np.where(nidq_ttl_camera == 1)[0]
+            nidq_ttl_camera_high = np.where(results['ttl_camera'] == 1)[0]
+            threshold = int(1 * (float(nidq_meta['niSampRate']))) # 1 seconds gap maximum
+            high_time_gap = np.diff([-threshold-1] + list(nidq_ttl_camera_high))
+            # find the consecutive camera time
+            last_item_larger_than_threshold = np.where(high_time_gap > threshold)[0][-1]
+            nidq_ttl_camera_high = nidq_ttl_camera_high[last_item_larger_than_threshold:]
             session_start_time = nidq_ttl_camera_high[0] / float(nidq_meta['niSampRate'])
             session_stop_time = nidq_ttl_camera_high[-1] / float(nidq_meta['niSampRate'])
+            # nidq_ttl_camera_high = np.where(nidq_ttl_camera == 1)[0]
+            # session_start_time = nidq_ttl_camera_high[0] / float(nidq_meta['niSampRate'])
+            # session_stop_time = nidq_ttl_camera_high[-1] / float(nidq_meta['niSampRate'])
             results['session_start_time'] = session_start_time
             results['session_stop_time'] = session_stop_time
             results['session_duration'] = session_stop_time - session_start_time
@@ -482,6 +532,7 @@ def load_dataset(
                 nidq_ttl_button = nidq_ttl_button[session_start_index:session_stop_index]
             results['ttl_button'] = nidq_ttl_button
             experimental_label_tag = auguslab_manual_create_experimental_tag(results, session_name, session_type)
+
             results['experimental_label_tag'] = experimental_label_tag
         except FileNotFoundError as e:
             results['has_ttl_button'] = False
@@ -494,25 +545,45 @@ def load_dataset(
     if 'spike' in need_modules:
         all_probes = set()
         spike_timebin = 0.1 # TODO: hardcode for 100msin s
+        results['spike_timebin'] = spike_timebin
         if probe == 'all':
             for f in os.scandir(session_folder):
                 if f.is_dir():
                     all_probes.add(f.path)
+            all_probes = sorted(all_probes, key = lambda x: os.path.basename(x))
+
+            # Get the spike matrix
             all_spike_matrix = []
+            neuron_per_probe = []
             for probe_path in all_probes:
-                probe_name = os.path.basename(probe_path)
                 spike_matrix = np.load(os.path.join(session_folder, probe_path, "spike_rate_matrix_100ms.npy"))
                 all_spike_matrix.append(spike_matrix)
+                neuron_per_probe.append(spike_matrix.shape[0])
             align_timestep = np.min([matrix.shape[1] for matrix in all_spike_matrix])
             all_spike_matrix = [matrix[:, :align_timestep] for matrix in all_spike_matrix]
             all_spike_matrix = np.concatenate(all_spike_matrix, axis = 0)
             results['spike_matrix'] = all_spike_matrix
+            results['num_neurons_per_probe'] = np.array(neuron_per_probe)
+
+            # Get the cluster info dataframe
+            try:
+                all_cluster_info = []
+                for probe_index, probe_path in enumerate(all_probes):
+                    cluster_info = pd.read_csv(os.path.join(session_folder, probe_path, "df_cluster_info.csv"))
+                    cluster_info['probe_name'] = os.path.basename(probe_path)
+                    cluster_info['probe_index'] = probe_index
+                    all_cluster_info.append(cluster_info)
+                all_cluster_info = pd.concat(all_cluster_info)
+                all_cluster_info = all_cluster_info.reset_index(drop=True)           
+                results['cluster_info'] = all_cluster_info
+                results['has_cluster_info'] = True
+            except FileNotFoundError as e:
+                results['has_cluster_info'] = False
 
             # get the spike time and the clusters for the spikes
             try:
                 spike_times_all = []
                 for probe_index, probe_path in enumerate(all_probes):
-                    probe_name = os.path.basename(probe_path)
                     spike_times = np.load(os.path.join(session_folder, probe_path, "spike_times.npy"))
                     spike_clusters = np.load(os.path.join(session_folder, probe_path, "spike_clusters.npy"))
                     spike_times_all.append((spike_times, spike_clusters))
@@ -563,6 +634,10 @@ def load_dataset(
             results['lfp'] = all_lfp
             results['has_lfp'] = True
             results['lfp_fs'] = lfp_fs
+            if results['has_ttl_camera']:
+                session_start_index = int(results['session_start_time'] * lfp_fs)
+                session_stop_index = int(results['session_stop_time']  * lfp_fs)
+                results['lfp'] = results['lfp'][:, session_start_index:session_stop_index]
         else:
             results['has_lfp'] = False
 
@@ -610,10 +685,18 @@ def load_dataset(
             raise NotImplementedError
     if 'video' in need_modules:
         try:
+            camera_sampling_rate = 30 # Hard coded for 30Hz
             video_motion = np.load(os.path.join(session_folder, "face_motion.npy"))
             video_motSVD = np.load(os.path.join(session_folder, "face_motSVD.npy"))
+            video_motion, video_motSVD = auguslab_manual_correct_ttl_video(
+                    video_motion, video_motSVD, camera_sampling_rate, session_name, session_type
+            )
             results['has_video'] = True
-            spike_matrix = results['spike_matrix']
+            spike_matrix = results['spike_matrix']            
+            video_motion_sec = video_motion.shape[0] / camera_sampling_rate
+            results['video_motion_raw_sec'] = video_motion_sec
+            print(f"spike_time_sec={spike_matrix.shape[0] / 10}, video_motion_sec={video_motion_sec}")
+            assert np.abs(spike_matrix.shape[0] / 10 - video_motion_sec) < 2, f"spike_time_sec={spike_matrix.shape[0] / 10}, video_motion_sec={video_motion_sec}"
             motSVD_interpolated_matrix = np.empty((spike_matrix.shape[0], video_motSVD.shape[1]))
             for i in range(video_motSVD.shape[1]):
                 motSVD_interpolated_matrix[:, i] = interpolate_array(video_motSVD[:, i], spike_matrix.shape[0])

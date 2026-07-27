@@ -42,8 +42,8 @@ class StructureTree:
     def get_structures_by_id(self, structure_ids: List[int]) -> List[Dict[str, Any]]:
         return [self._by_id[structure_id] for structure_id in structure_ids if structure_id in self._by_id]
 
-    def get_colors_by_acronym(self, acronyms: List[str]) -> List[str]:
-        return ['#' + self._by_acronym[acronym]["color_hex_triplet"] for acronym in acronyms if acronym in self._by_acronym]
+    # def get_colors_by_acronym(self, acronyms: List[str]) -> List[str]:
+    #     return ['#' + self._by_acronym[acronym]["color_hex_triplet"] for acronym in acronyms if acronym in self._by_acronym]
 
 tree = StructureTree()
 
@@ -59,7 +59,6 @@ def _structure_by_id(structure_id: int) -> Dict[str, Any]:
     if not structures:
         raise KeyError(f"Unknown Allen brain region id: {structure_id}")
     return structures[0]
-
 
 
 # meta_region_color_map: Dict[str, str] = {
@@ -86,6 +85,15 @@ def _structure_by_id(structure_id: int) -> Dict[str, Any]:
 # }
 
 
+def get_region_color(regions: List[str], DEFAULT_COLOR = '#888888') -> List[str]:
+    colors = []
+    for region in regions:
+        structures = tree.get_structures_by_acronym([region])
+        if not structures:
+            colors.append(DEFAULT_COLOR)
+        else:
+            colors.append('#'+structures[0]['color_hex_triplet'])
+    return colors
 
 TARGET_REGION_LIST: List[str] = ["TH", "HY", "HPF", "BS", "CTX", "CNU"]
 TARGET_REGION_LIST = sorted(
@@ -247,7 +255,7 @@ def plot_region_mark(
     ticklabels = []
     tickpos = []
 
-    meta_region_colors = tree.get_colors_by_acronym(np.unique(meta_region_list))
+    meta_region_colors = get_region_color(np.unique(meta_region_list))
     color_map = {meta_region: color for meta_region, color in zip(np.unique(meta_region_list), meta_region_colors)}
 
     for region, start, end in meta_region_rep:
